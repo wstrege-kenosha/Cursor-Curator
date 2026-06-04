@@ -7,7 +7,7 @@ Upstream parity matrix: [docs/PARITY.md](docs/PARITY.md).
 ## Install
 
 ```bash
-git clone https://github.com/OWNER/goalbuddy-cursor-port.git
+git clone https://github.com/wstrege-kenosha/GoalBuddy-Cursor-Port.git
 cd goalbuddy-cursor-port
 node scripts/install-from-repo.mjs
 ```
@@ -61,10 +61,6 @@ node ~/.cursor/skills/goalbuddy/scripts/goalbuddy.mjs board docs/goals/<slug>
 
 ## Publishing
 
-Replace `OWNER` with your GitHub user or org, then push (`gh auth login` first):
-
-```bash
-gh repo create OWNER/goalbuddy-cursor-port --public --source=. --remote=origin --push
-```
+Public repo: [github.com/wstrege-kenosha/GoalBuddy-Cursor-Port](https://github.com/wstrege-kenosha/GoalBuddy-Cursor-Port).
 
 Re-run [Verify](#verify) from a fresh clone. Not on npm; upstream [tolibear/goalbuddy](https://github.com/tolibear/goalbuddy).

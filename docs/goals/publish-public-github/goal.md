@@ -18,7 +18,7 @@ I'd like to publish this port to a public GitHub repo.
 - Goal oracle: A third party (or documented fresh-clone run) can clone the public repo URL, install, and pass doctor/check without private remotes or secrets in tracked files or recent history
 - Likely misfire: Push local-only git with goal boards containing machine-specific paths; publish without replacing README placeholders; push secrets or `.cursor` install manifests with user paths
 - Blind spots considered: repo name/owner choice; whether to include all `docs/goals/*` history boards; relationship to upstream tolibear/goalbuddy attribution; GitHub org vs personal; default branch name
-- Existing plan facts: LICENSE, README, `docs/PARITY.md`, vendored skills, local git commits; README uses `OWNER` placeholder until push
+- Existing plan facts: LICENSE, README, `docs/PARITY.md`, vendored skills; public repo `wstrege-kenosha/GoalBuddy-Cursor-Port` on origin
 
 ## Goal Oracle
 
