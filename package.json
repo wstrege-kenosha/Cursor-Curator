@@ -1,7 +1,6 @@
 {
   "name": "goalbuddy-cursor-port",
   "version": "1.0.0",
-  "private": true,
   "description": "Git-installable Cursor port of GoalBuddy (upstream 0.3.8)",
   "license": "MIT",
   "engines": {

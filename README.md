@@ -7,10 +7,12 @@ Upstream parity matrix: [docs/PARITY.md](docs/PARITY.md).
 ## Install
 
 ```bash
-git clone <this-repo-url>
-cd GoalBuddyCursorPort
+git clone https://github.com/OWNER/goalbuddy-cursor-port.git
+cd goalbuddy-cursor-port
 node scripts/install-from-repo.mjs
 ```
+
+Replace `OWNER` with your GitHub username or org after you create the public repository (see [Publishing](#publishing)).
 
 Or after clone:
 
@@ -58,3 +60,24 @@ node ~/.cursor/skills/goalbuddy/scripts/goalbuddy.mjs board docs/goals/<slug>
 | `goalbuddy/` | Main GoalBuddy skill (scripts, agents-src, commands-src, board surface) |
 | `goal-prep/` | `/goal-prep` skill |
 | `scripts/install-from-repo.mjs` | Copy skills + run Cursor install |
+
+## Publishing
+
+Maintainers: after creating the public repo, replace `OWNER` in this README with the real GitHub owner, then push.
+
+```bash
+# Requires GitHub CLI (gh) authenticated: gh auth login
+gh repo create OWNER/goalbuddy-cursor-port --public --source=. --remote=origin --push
+```
+
+Fresh-clone verify (from a clean directory):
+
+```bash
+git clone https://github.com/OWNER/goalbuddy-cursor-port.git
+cd goalbuddy-cursor-port
+node scripts/install-from-repo.mjs
+npm run check
+node goalbuddy/scripts/goalbuddy.mjs doctor --goal-ready
+```
+
+This port is not published to npm; install from git only. Upstream: [tolibear/goalbuddy](https://github.com/tolibear/goalbuddy).

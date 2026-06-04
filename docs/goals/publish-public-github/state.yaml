@@ -63,7 +63,7 @@ visual_board:
     url: "http://goalbuddy.localhost:41737/publish-public-github/"
     command: "node goalbuddy/scripts/goalbuddy.mjs board docs/goals/publish-public-github"
 
-active_task: T003
+active_task: T004
 
 tasks:
   - id: T001
@@ -122,7 +122,7 @@ tasks:
   - id: T003
     type: worker
     assignee: Worker
-    status: active
+    status: done
     reasoning_hint: default
     objective: "Sanitize path leaks; extend .gitignore; redact machine-specific notes; initial git commit. No remotes, push, gh, or README URL changes."
     allowed_files:
@@ -134,10 +134,46 @@ tasks:
       - git log -1 --oneline
       - npm run check
     stop_if:
-      - "git ls-files matches wstrege or w:\\Experimental paths"
+      - "git ls-files matches machine-specific username or absolute local path leaks"
       - "Push or gh attempted"
       - "README.md edited"
       - "npm run check fails"
+    receipt:
+      result: done
+      summary: "Sanitized install.json, gitignore, notes; initial commit be8df17; PM fixed stop_if scan false positive."
+      changed_files:
+        - .gitignore
+        - goalbuddy/install.json
+        - notes/T004-worker.md
+        - docs/goals/publish-public-github/notes/T001-scout.md
+      commands:
+        - cmd: git commit
+          status: pass
+        - cmd: npm run check
+          status: pass
+      note: notes/T001-scout.md
+  - id: T004
+    type: worker
+    assignee: Worker
+    status: active
+    reasoning_hint: default
+    objective: "Prep public repo metadata: set package.json private false; update README clone URL to github.com/OWNER/goalbuddy-cursor-port placeholder + Publishing section; commit. Stop before gh push without owner/repo."
+    allowed_files:
+      - README.md
+      - package.json
+      - docs/goals/publish-public-github/notes/T004-publish.md
+    verify:
+      - npm run check
+      - git log -1 --oneline
+    stop_if:
+      - "gh push or remote add without documented owner/repo approval"
+    receipt: null
+  - id: T005
+    type: pm
+    assignee: PM
+    status: queued
+    reasoning_hint: default
+    objective: "Create public GitHub repo and push when user supplies owner/repo and gh auth; fresh-clone verify; update README with real URL."
     receipt: null
   - id: T999
     type: judge
