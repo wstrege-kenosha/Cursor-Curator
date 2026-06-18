@@ -162,10 +162,8 @@ function runInstall() {
   for (const entry of mcpResult.installed) {
     console.log(`MCP: ${entry.configPath}`);
   }
-  for (const entry of mcpResult.removed || []) {
-    console.log(`MCP removed (avoid duplicate): ${entry.configPath}`);
-  }
-  console.log(`Next: enable the goalbuddy MCP server in Cursor, then /goal-prep and /goal.`);
+  console.log(`Next: enable the goalbuddy MCP server in Cursor Settings → MCP, then /goal-prep and /goal.`);
+  console.log(`User-level MCP (~/.cursor/mcp.json) works in every workspace; project .cursor/mcp.json is optional for this repo.`);
 }
 
 function runReset() {
@@ -238,11 +236,14 @@ function installSurfacesCheck() {
 }
 
 function mcpConfigCheck() {
-  const configPath = join(process.cwd(), ".cursor", "mcp.json");
-  const check = checkMcpConfig(configPath, skillRoot);
-  if (check.ok) return [check];
-  const skillConfig = checkMcpConfig(join(skillRoot, "..", ".cursor", "mcp.json"), skillRoot);
-  return [skillConfig.ok ? skillConfig : check];
+  const candidates = [
+    join(process.cwd(), ".cursor", "mcp.json"),
+    join(skillRoot, "..", ".cursor", "mcp.json"),
+    join(cursorHome, "mcp.json"),
+  ];
+  const checks = candidates.map((configPath) => checkMcpConfig(configPath, skillRoot));
+  const ok = checks.find((check) => check.ok);
+  return ok ? [ok] : [checks[0]];
 }
 
 function mcpSmokeCheck() {

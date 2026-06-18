@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { buildMcpServerEntry, buildMcpServerEntryForProject, checkMcpConfig, installMcpConfig, mergeMcpConfig, removeMcpServerEntry } from "../install-mcp.mjs";
+import { buildMcpServerEntry, buildMcpServerEntryForProject, checkMcpConfig, installMcpConfig, mergeMcpConfig } from "../install-mcp.mjs";
 import { resolveGoalStatePath } from "../../mcp/path-utils.mjs";
 import {
   runMcpSmokeTest,
@@ -85,21 +85,12 @@ test("buildMcpServerEntryForProject uses portable repo-relative paths", () => {
   assert.equal(entry.args.some((arg) => arg.includes("Users")), false);
 });
 
-test("installMcpConfig removes user-level goalbuddy when project config is written", () => {
+test("installMcpConfig writes user-level and project configs", () => {
   const tempHome = mkdtempSync(join(tmpdir(), "goalbuddy-mcp-"));
   const userConfigPath = join(tempHome, "mcp.json");
   writeFileSync(
     userConfigPath,
-    `${JSON.stringify(
-      {
-        mcpServers: {
-          other: { command: "echo" },
-          goalbuddy: buildMcpServerEntry(skillRoot),
-        },
-      },
-      null,
-      2,
-    )}\n`,
+    `${JSON.stringify({ mcpServers: { other: { command: "echo" } } }, null, 2)}\n`,
     "utf8",
   );
 
@@ -109,11 +100,14 @@ test("installMcpConfig removes user-level goalbuddy when project config is writt
     cursorHome: tempHome,
   });
 
-  assert.equal(result.installed.length, 1);
-  assert.equal(result.removed.length, 1);
+  assert.equal(result.installed.length, 2);
   const userConfig = JSON.parse(readFileSync(userConfigPath, "utf8"));
   assert.ok(userConfig.mcpServers.other);
-  assert.equal(userConfig.mcpServers.goalbuddy, undefined);
+  assert.ok(userConfig.mcpServers.goalbuddy);
+  assert.equal(
+    resolve(String(userConfig.mcpServers.goalbuddy.args[0])),
+    resolve(skillRoot, "mcp", "server.mjs"),
+  );
 });
 
 test("checkMcpConfig accepts repo project config", () => {

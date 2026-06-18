@@ -9,23 +9,27 @@
 
 ## Two `goalbuddy` MCP servers in Settings
 
-Install previously wrote `goalbuddy` to both the project `.cursor/mcp.json` and `~/.cursor/mcp.json`, so Cursor showed duplicates (one working, one failing).
+Install may write `goalbuddy` to both `~/.cursor/mcp.json` (global) and the project `.cursor/mcp.json` (when install runs from this repo). Cursor can show both when this repo is open.
 
-Re-run install from the repo:
+Disable one in **Cursor Settings → MCP** if you prefer a single entry. Keep the **user-level** entry if you use `/goal` in other workspaces; keep the **project** entry only if you never leave this repo.
+
+Restart Cursor after changes.
+
+## MCP tools not available in chat
+
+Re-run install (restores user-level `~/.cursor/mcp.json`):
 
 ```bash
 npm run install:cursor
 ```
 
-Or remove the `goalbuddy` block manually from `~/.cursor/mcp.json` (keep the project entry in `.cursor/mcp.json`). Restart Cursor.
-
-## MCP tools not available in chat
+Or:
 
 ```bash
 node ~/.cursor/skills/goalbuddy/scripts/goalbuddy.mjs install
 ```
 
-Confirm `.cursor/mcp.json` contains a `goalbuddy` entry. Enable the server in **Cursor Settings → MCP**. Restart Cursor.
+Confirm `~/.cursor/mcp.json` contains a `goalbuddy` entry. Enable the server in **Cursor Settings → MCP**. Restart Cursor.
 
 ## Board URL does not open
 

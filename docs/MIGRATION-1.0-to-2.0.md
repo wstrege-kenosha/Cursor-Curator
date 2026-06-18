@@ -86,7 +86,7 @@ This:
 - Overwrites `~/.cursor/skills/goalbuddy` and `goal-prep` (use `--force` on `goalbuddy.mjs install` if agents were hand-edited)
 - Re-installs `goal-scout`, `goal-judge`, `goal-worker` agents
 - Updates `/goal`, `/goal-prep`, `/goal-board` commands
-- Merges MCP config into `<repo>/.cursor/mcp.json` (portable paths). When a project config is written, any duplicate `goalbuddy` entry in `~/.cursor/mcp.json` is removed.
+- Merges MCP config into `~/.cursor/mcp.json` (global, all workspaces) and into `<repo>/.cursor/mcp.json` when install runs from this repo (portable paths for contributors).
 
 To force-overwrite agents/commands that you did not customize:
 
@@ -96,7 +96,7 @@ node ~/.cursor/skills/goalbuddy/scripts/goalbuddy.mjs install --force
 
 ### 4. Enable the goalbuddy MCP server
 
-**Project-level** (recommended when working in the port repo or a workspace with `.cursor/mcp.json`):
+Install writes **user-level** MCP (`~/.cursor/mcp.json`) so `/goal` works in any workspace. When you run install from this repo, it also merges a portable project entry:
 
 ```json
 {
@@ -109,9 +109,9 @@ node ~/.cursor/skills/goalbuddy/scripts/goalbuddy.mjs install --force
 }
 ```
 
-After `install`, only **one** `goalbuddy` MCP entry should appear. Project workspaces use portable paths in `.cursor/mcp.json`. User-level `~/.cursor/mcp.json` gets a `goalbuddy` entry only when install finds no project with `docs/goals/` (standalone consumer workspaces).
+You may see two `goalbuddy` entries when this repo is open (user + project). Both should work; disable one in **Cursor Settings → MCP** if the duplicate bothers you. In other workspaces, only the user-level entry applies.
 
-In **Cursor Settings → MCP**, confirm `goalbuddy` is listed and enabled. Restart Cursor if it was already open during install.
+Restart Cursor if it was already open during install.
 
 ### 5. Restart Cursor
 

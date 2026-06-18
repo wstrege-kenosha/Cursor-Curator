@@ -96,22 +96,14 @@ export function installMcpConfig({ skillRoot, projectRoots = [], cursorHome }) {
     }
   }
 
+  // User-level config uses absolute skill paths so goalbuddy MCP works in any workspace.
   if (cursorHome) {
     const userConfigPath = join(resolve(cursorHome), "mcp.json");
-    if (installed.length > 0) {
-      try {
-        const result = removeMcpServerEntry(userConfigPath);
-        if (result.removed) removed.push(result);
-      } catch (error) {
-        errors.push(`cursorHome cleanup: ${error.message}`);
-      }
-    } else {
-      try {
-        const result = writeMergedMcpConfig(userConfigPath, skillRoot);
-        installed.push(result);
-      } catch (error) {
-        errors.push(`cursorHome: ${error.message}`);
-      }
+    try {
+      const result = writeMergedMcpConfig(userConfigPath, skillRoot);
+      installed.push(result);
+    } catch (error) {
+      errors.push(`cursorHome: ${error.message}`);
     }
   }
 
