@@ -43,6 +43,8 @@ node ~/.cursor/skills/goalbuddy/scripts/goalbuddy.mjs install
 node ~/.cursor/skills/goalbuddy/scripts/goalbuddy.mjs doctor --goal-ready
 ```
 
+Upgrading from port **1.0.0**? See [../../docs/MIGRATION-1.0-to-2.0.md](../../docs/MIGRATION-1.0-to-2.0.md).
+
 Enable the **goalbuddy** MCP server in Cursor settings after install. `/goal` and subagents use MCP tools for validation and prompts.
 
 ## MCP tools

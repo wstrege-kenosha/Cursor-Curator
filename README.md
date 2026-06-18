@@ -4,6 +4,8 @@ Git-installable [GoalBuddy](https://github.com/tolibear/goalbuddy) port for Curs
 
 Upstream parity matrix: [docs/PARITY.md](docs/PARITY.md). **Wiki:** [GoalBuddy Cursor Port wiki](https://github.com/wstrege-kenosha/GoalBuddy-Cursor-Port/wiki).
 
+**Upgrading from 1.0.0?** See [docs/MIGRATION-1.0-to-2.0.md](docs/MIGRATION-1.0-to-2.0.md).
+
 ## What's new in 2.0.0
 
 - **Multi-goal hub** at `http://goalbuddy.localhost:41737/` with goal discovery

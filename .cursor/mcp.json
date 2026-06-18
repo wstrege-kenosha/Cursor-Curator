@@ -2,7 +2,9 @@
   "mcpServers": {
     "goalbuddy": {
       "command": "node",
-      "args": ["goalbuddy/mcp/server.mjs"]
+      "args": [
+        "goalbuddy/mcp/server.mjs"
+      ]
     }
   }
 }

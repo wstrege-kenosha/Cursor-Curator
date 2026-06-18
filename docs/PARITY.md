@@ -1,5 +1,7 @@
 # GoalBuddy parity — upstream 0.3.8 vs Cursor port 2.0.0
 
+**Migration from port 1.0.0:** [MIGRATION-1.0-to-2.0.md](MIGRATION-1.0-to-2.0.md)
+
 ## Upstream (`tolibear/goalbuddy` @ 0.3.8)
 
 | Path | Role |

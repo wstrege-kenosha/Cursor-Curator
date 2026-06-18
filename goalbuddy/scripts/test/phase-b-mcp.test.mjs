@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { buildMcpServerEntry, checkMcpConfig, mergeMcpConfig } from "../install-mcp.mjs";
+import { buildMcpServerEntry, buildMcpServerEntryForProject, checkMcpConfig, installMcpConfig, mergeMcpConfig, removeMcpServerEntry } from "../install-mcp.mjs";
 import { resolveGoalStatePath } from "../../mcp/path-utils.mjs";
 import {
   runMcpSmokeTest,
@@ -75,6 +76,44 @@ test("mergeMcpConfig preserves other servers", () => {
   const merged = mergeMcpConfig({ mcpServers: { other: { command: "echo" } } }, buildMcpServerEntry(skillRoot));
   assert.ok(merged.mcpServers.other);
   assert.ok(merged.mcpServers.goalbuddy);
+});
+
+test("buildMcpServerEntryForProject uses portable repo-relative paths", () => {
+  const entry = buildMcpServerEntryForProject(repoRoot, skillRoot);
+  assert.equal(entry.command, "node");
+  assert.deepEqual(entry.args, ["goalbuddy/mcp/server.mjs"]);
+  assert.equal(entry.args.some((arg) => arg.includes("Users")), false);
+});
+
+test("installMcpConfig removes user-level goalbuddy when project config is written", () => {
+  const tempHome = mkdtempSync(join(tmpdir(), "goalbuddy-mcp-"));
+  const userConfigPath = join(tempHome, "mcp.json");
+  writeFileSync(
+    userConfigPath,
+    `${JSON.stringify(
+      {
+        mcpServers: {
+          other: { command: "echo" },
+          goalbuddy: buildMcpServerEntry(skillRoot),
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+
+  const result = installMcpConfig({
+    skillRoot,
+    projectRoots: [repoRoot],
+    cursorHome: tempHome,
+  });
+
+  assert.equal(result.installed.length, 1);
+  assert.equal(result.removed.length, 1);
+  const userConfig = JSON.parse(readFileSync(userConfigPath, "utf8"));
+  assert.ok(userConfig.mcpServers.other);
+  assert.equal(userConfig.mcpServers.goalbuddy, undefined);
 });
 
 test("checkMcpConfig accepts repo project config", () => {

@@ -162,6 +162,9 @@ function runInstall() {
   for (const entry of mcpResult.installed) {
     console.log(`MCP: ${entry.configPath}`);
   }
+  for (const entry of mcpResult.removed || []) {
+    console.log(`MCP removed (avoid duplicate): ${entry.configPath}`);
+  }
   console.log(`Next: enable the goalbuddy MCP server in Cursor, then /goal-prep and /goal.`);
 }
 

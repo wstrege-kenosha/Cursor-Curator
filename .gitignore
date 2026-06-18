@@ -4,8 +4,17 @@ Thumbs.db
 *.log
 .env
 .env.*
+
+# Install-generated local state (machine-specific paths)
 goalbuddy/install.json
-**/.goalbuddy-board/board-snapshot.json
-/notes/
+goalbuddy/.goalbuddy-install.json
+
+# Generated goal board artifacts
+**/.goalbuddy-board/
+!goalbuddy/surfaces/local-goal-board/examples/**/.goalbuddy-board/
+
+# Ephemeral goal workspaces from manual testing
 docs/goals/goal-prep-live-test/
 docs/goals/goalbuddy-cursor-port/
+
+/notes/

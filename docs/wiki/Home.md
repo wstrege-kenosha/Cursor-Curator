@@ -4,6 +4,7 @@ Git-installable [GoalBuddy](https://github.com/tolibear/goalbuddy) for Cursor (`
 
 | Page | Topic |
 |------|--------|
+| [Migration 1.0 → 2.0](Migration-1.0-to-2.0) | Upgrade from 1.0.0 |
 | [Install](Install) | Clone, install skills, MCP, verify |
 | [Usage](Usage) | `/goal-prep`, `/goal`, MCP, auto-loop, board |
 | [GoalBuddy loop](GoalBuddy-Loop) | Scout, Judge, Worker, oracle, MCP gates |

@@ -7,6 +7,18 @@
 - Restart Cursor so agents, commands, and MCP reload.
 - Check `doctor` output for `mcp:goalbuddy` and `mcp:smoke` lines.
 
+## Two `goalbuddy` MCP servers in Settings
+
+Install previously wrote `goalbuddy` to both the project `.cursor/mcp.json` and `~/.cursor/mcp.json`, so Cursor showed duplicates (one working, one failing).
+
+Re-run install from the repo:
+
+```bash
+npm run install:cursor
+```
+
+Or remove the `goalbuddy` block manually from `~/.cursor/mcp.json` (keep the project entry in `.cursor/mcp.json`). Restart Cursor.
+
 ## MCP tools not available in chat
 
 ```bash
