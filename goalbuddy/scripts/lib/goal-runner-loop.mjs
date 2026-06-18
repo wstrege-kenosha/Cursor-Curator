@@ -37,11 +37,18 @@ export async function runGoalLoop(options) {
   const log = options.log || ((line) => console.log(line));
 
   const previousWorkspace = process.env.GOALBUDDY_WORKSPACE;
+  const previousWorkspaceForce = process.env.GOALBUDDY_WORKSPACE_FORCE;
   process.env.GOALBUDDY_WORKSPACE = workspaceRoot;
+  process.env.GOALBUDDY_WORKSPACE_FORCE = "1";
 
   if (!goal) throw new Error("goal slug or path is required.");
   if (!executeAgent && !dryRun) {
     process.env.GOALBUDDY_WORKSPACE = previousWorkspace;
+    if (previousWorkspaceForce === undefined) {
+      delete process.env.GOALBUDDY_WORKSPACE_FORCE;
+    } else {
+      process.env.GOALBUDDY_WORKSPACE_FORCE = previousWorkspaceForce;
+    }
     throw new Error("executeAgent is required unless --dry-run is set.");
   }
 
@@ -229,6 +236,11 @@ export async function runGoalLoop(options) {
       delete process.env.GOALBUDDY_WORKSPACE;
     } else {
       process.env.GOALBUDDY_WORKSPACE = previousWorkspace;
+    }
+    if (previousWorkspaceForce === undefined) {
+      delete process.env.GOALBUDDY_WORKSPACE_FORCE;
+    } else {
+      process.env.GOALBUDDY_WORKSPACE_FORCE = previousWorkspaceForce;
     }
   }
 }

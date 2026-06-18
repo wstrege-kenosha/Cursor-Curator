@@ -4,7 +4,8 @@
       "command": "node",
       "args": [
         "goalbuddy/mcp/server.mjs"
-      ]
+      ],
+      "cwd": "."
     }
   }
 }

@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { basename, dirname } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { checkCompletionReadiness } from "../scripts/lib/goal-completion.mjs";
 import { buildHubPayload } from "../scripts/lib/goal-hub.mjs";
 import { validateReceipt } from "../scripts/lib/goal-receipt.mjs";
@@ -8,7 +8,31 @@ import { findStaleGoals } from "../scripts/lib/goal-stale.mjs";
 import { validateGoalState } from "../scripts/lib/goal-state.mjs";
 import { createParallelPlan } from "../scripts/parallel-plan.mjs";
 import { loadBoard, renderTaskPrompt, selectTask } from "../scripts/render-task-prompt.mjs";
-import { getWorkspaceRoot, resolveGoalDir, resolveGoalStatePath } from "./path-utils.mjs";
+import { getWorkspaceRoot, resolveGoalDir, resolveGoalStatePath, collectWorkspaceCandidates, resolveWorkspaceForGoal } from "./path-utils.mjs";
+
+function workspaceForArgs(args = {}) {
+  if (args.workspace_root) {
+    return resolve(String(args.workspace_root));
+  }
+  if (args.goal) {
+    return resolveWorkspaceForGoal(args.goal);
+  }
+  return getWorkspaceRoot();
+}
+
+function goalRootsForList(args = {}) {
+  if (args.workspace_root) {
+    return [resolve(String(args.workspace_root))];
+  }
+  const roots = collectWorkspaceCandidates().filter((root) => {
+    try {
+      return existsSync(join(root, "docs", "goals"));
+    } catch {
+      return false;
+    }
+  });
+  return roots.length ? roots : [getWorkspaceRoot()];
+}
 
 const CURSOR_AGENT_MAP = {
   goal_scout: "goal-scout",
@@ -17,14 +41,16 @@ const CURSOR_AGENT_MAP = {
 };
 
 export function toolListGoals(args = {}) {
-  const workspaceRoot = getWorkspaceRoot();
+  const roots = goalRootsForList(args);
+  const workspaceRoot = workspaceForArgs(args);
   const days = Number(args.stale_days) > 0 ? Number(args.stale_days) : 0;
-  const payload = buildHubPayload({ roots: [workspaceRoot] });
-  const stale = days > 0 ? findStaleGoals({ days, roots: [workspaceRoot] }) : null;
+  const payload = buildHubPayload({ roots });
+  const stale = days > 0 ? findStaleGoals({ days, roots }) : null;
   const staleSlugs = new Set((stale?.goals || []).map((goal) => goal.slug));
 
   return {
     workspace_root: workspaceRoot,
+    scanned_roots: roots,
     goal_count: payload.goal_count,
     goals: payload.goals.map((goal) => ({
       slug: goal.slug,
@@ -43,11 +69,13 @@ export function toolListGoals(args = {}) {
 }
 
 export function toolGetGoalState(args = {}) {
-  const statePath = resolveGoalStatePath(args.goal, getWorkspaceRoot());
+  const workspaceRoot = workspaceForArgs(args);
+  const statePath = resolveGoalStatePath(args.goal, workspaceRoot);
   const board = loadBoard(statePath);
   const validation = validateGoalState(statePath);
 
   return {
+    workspace_root: workspaceRoot,
     state_path: statePath,
     goal_dir: dirname(statePath),
     slug: basename(dirname(statePath)),
@@ -62,13 +90,15 @@ export function toolGetGoalState(args = {}) {
 }
 
 export function toolGetActiveTask(args = {}) {
-  const statePath = resolveGoalStatePath(args.goal, getWorkspaceRoot());
+  const workspaceRoot = workspaceForArgs(args);
+  const statePath = resolveGoalStatePath(args.goal, workspaceRoot);
   const board = loadBoard(statePath);
   const validation = validateGoalState(statePath);
   const taskId = args.task_id || board.document.active_task;
   const task = selectTask(board, taskId);
 
   return {
+    workspace_root: workspaceRoot,
     state_path: statePath,
     active_task: board.document.active_task,
     task: {
@@ -88,17 +118,20 @@ export function toolGetActiveTask(args = {}) {
 }
 
 export function toolValidateState(args = {}) {
-  const statePath = resolveGoalStatePath(args.goal, getWorkspaceRoot());
+  const workspaceRoot = workspaceForArgs(args);
+  const statePath = resolveGoalStatePath(args.goal, workspaceRoot);
   const result = validateGoalState(statePath);
   return {
     ...result,
+    workspace_root: workspaceRoot,
     goal_root: dirname(statePath),
     slug: basename(dirname(statePath)),
   };
 }
 
 export function toolRenderTaskPrompt(args = {}) {
-  const statePath = resolveGoalStatePath(args.goal, getWorkspaceRoot());
+  const workspaceRoot = workspaceForArgs(args);
+  const statePath = resolveGoalStatePath(args.goal, workspaceRoot);
   const board = loadBoard(statePath);
   const taskId = args.task_id || board.document.active_task;
   const result = renderTaskPrompt({
@@ -106,13 +139,18 @@ export function toolRenderTaskPrompt(args = {}) {
     taskId,
     json: true,
   });
-  return mapCursorAgentsInPayload(result.payload);
+  return {
+    workspace_root: workspaceRoot,
+    ...mapCursorAgentsInPayload(result.payload),
+  };
 }
 
 export function toolParallelPlan(args = {}) {
-  const goalDir = resolveGoalDir(args.goal, getWorkspaceRoot());
+  const workspaceRoot = workspaceForArgs(args);
+  const goalDir = resolveGoalDir(args.goal, workspaceRoot);
   const plan = createParallelPlan({ goalRoot: goalDir, json: true });
   return {
+    workspace_root: workspaceRoot,
     ...plan,
     candidates: (plan.candidates || []).map(mapParallelCandidate),
     spawn_plan: (plan.spawn_plan || []).map(mapSpawnPlanEntry),
@@ -134,13 +172,18 @@ export function toolValidateReceipt(args = {}) {
 }
 
 export function toolCompletionCheck(args = {}) {
-  const statePath = resolveGoalStatePath(args.goal, getWorkspaceRoot());
-  return checkCompletionReadiness(statePath);
+  const workspaceRoot = workspaceForArgs(args);
+  const statePath = resolveGoalStatePath(args.goal, workspaceRoot);
+  return {
+    workspace_root: workspaceRoot,
+    ...checkCompletionReadiness(statePath),
+  };
 }
 
 export function toolAppendSessionNote(args = {}) {
+  const workspaceRoot = workspaceForArgs(args);
   return appendSessionNote({
-    workspaceRoot: getWorkspaceRoot(),
+    workspaceRoot,
     summary: args.summary,
     task_id: args.task_id,
     goal_slug: args.goal_slug,

@@ -26,6 +26,43 @@ npm run install:cursor
 
 User-level MCP uses a launcher script that loads the server from your cloned repo (where `npm install` put `@modelcontextprotocol/sdk`). If MCP fails to start, confirm you ran `npm install` in GoalBuddy-Cursor-Port and that `~/.cursor/skills/goalbuddy/.goalbuddy-port.json` points at that clone.
 
+## MCP resolves the wrong workspace (EISDIR / state.yaml not found)
+
+Global `~/.cursor/mcp.json` used to launch GoalBuddy with `cwd` at your user home directory and cache that path as `GOALBUDDY_WORKSPACE` at MCP startup. GoalBuddy 2.0+ re-reads Cursor's `WORKSPACE_FOLDER_PATHS` (and related editor env vars) on **every tool call**, so the open project wins even when a stale home path was cached earlier.
+
+If `/goal` still fails:
+
+1. Open the **project that contains the goal** (e.g. `W:\Experimental\HTMX` for `html-mudblazor-component-library`).
+2. Add a project `.cursor/mcp.json` in that repo so Cursor scopes MCP to that workspace:
+
+   ```json
+   {
+     "mcpServers": {
+       "goalbuddy": {
+         "command": "node",
+         "args": ["C:\\Users\\YOU\\.cursor\\skills\\goalbuddy\\scripts\\run-mcp-server.mjs"],
+         "cwd": "."
+       }
+     }
+   }
+   ```
+
+   `"cwd": "."` tells Cursor to launch MCP from the open workspace root (required when global config would otherwise use `$HOME`).
+
+3. Re-run install from GoalBuddy-Cursor-Port (updates user-level MCP to include `"cwd": "."` too):
+
+   ```bash
+   npm install
+   npm run install:cursor
+   ```
+
+4. Restart Cursor and confirm **Settings → MCP → goalbuddy** is enabled (disable duplicate entries if both global and project configs appear).
+5. Run `node goalbuddy/scripts/goalbuddy.mjs doctor` **from the goal's repo root**, not from `$HOME`.
+
+When MCP tools run, check `workspace_root` in `list_goals` output — it should match the repo that contains `docs/goals/<slug>/`, not `C:\Users\...`.
+
+Doctor `mcp:smoke` must pass against `docs/goals/sample-cursor-smoke/state.yaml` in the repo you have open.
+
 ## Board URL does not open
 
 - Use http://127.0.0.1:41737/ (hub) or http://127.0.0.1:41737/<slug>/ if `goalbuddy.localhost` does not resolve.

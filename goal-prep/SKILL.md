@@ -58,13 +58,19 @@ For vague goals, ask one guided question at a time with 2–3 options and a reco
 
    `[Open GoalBuddy board](http://goalbuddy.localhost:41737/<goal-slug>/)`
 
-7. Print exactly:
+7. Register this workspace for MCP (required once per project):
+
+   ```bash
+   node ~/.cursor/skills/goalbuddy/scripts/goalbuddy.mjs workspace register
+   ```
+
+8. Print exactly:
 
    ```text
    /goal Follow docs/goals/<goal-slug>/goal.md.
    ```
 
-8. Ask: start `/goal` now, refine board, or stop.
+9. Ask: start `/goal` now, refine board, or stop.
 
 ## Board shape by input
 

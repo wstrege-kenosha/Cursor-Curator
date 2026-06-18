@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { registerKnownWorkspace } from "../mcp/path-utils.mjs";
 
 const SERVER_NAME = "goalbuddy";
 const VENDORED_SERVER_REL = "goalbuddy/mcp/server.mjs";
@@ -104,6 +105,7 @@ export function buildMcpServerEntry(skillRoot) {
   return {
     command: "node",
     args: [resolveMcpLauncherPath(skillRoot)],
+    cwd: ".",
   };
 }
 
@@ -111,14 +113,15 @@ export function buildMcpServerEntryForProject(projectRoot, skillRoot) {
   const resolvedProject = resolve(projectRoot);
   const vendoredServer = join(resolvedProject, ...VENDORED_SERVER_REL.split("/"));
 
-  const serverArg = existsSync(vendoredServer)
-    ? VENDORED_SERVER_REL
-    : toPosixPath(relative(resolvedProject, resolveServerPath(skillRoot)));
+  if (existsSync(vendoredServer)) {
+    return {
+      command: "node",
+      args: [VENDORED_SERVER_REL],
+      cwd: ".",
+    };
+  }
 
-  return {
-    command: "node",
-    args: [serverArg],
-  };
+  return buildMcpServerEntry(skillRoot);
 }
 
 export function projectRootFromMcpConfigPath(configPath) {
@@ -166,6 +169,18 @@ export function removeMcpServerEntry(configPath, serverName = SERVER_NAME) {
   return { removed: true, configPath, merged };
 }
 
+export function ensureProjectMcpConfig(projectRoot, skillRoot) {
+  const resolvedProject = resolve(projectRoot);
+  if (!existsSync(join(resolvedProject, "docs", "goals"))) {
+    return { ok: false, reason: "missing docs/goals/", projectRoot: resolvedProject };
+  }
+
+  const result = writeMergedMcpConfig(join(resolvedProject, ".cursor", "mcp.json"), skillRoot, {
+    projectRoot: resolvedProject,
+  });
+  return { ok: true, projectRoot: resolvedProject, ...result };
+}
+
 export function installMcpConfig({ skillRoot, projectRoots = [], cursorHome, repoRoot }) {
   const installed = [];
   const removed = [];
@@ -191,6 +206,10 @@ export function installMcpConfig({ skillRoot, projectRoots = [], cursorHome, rep
     } catch (error) {
       errors.push(`${projectRoot}: ${error.message}`);
     }
+  }
+
+  for (const projectRoot of roots) {
+    registerKnownWorkspace(projectRoot);
   }
 
   // User-level config uses the launcher so MCP deps resolve from the cloned repo.

@@ -10,8 +10,10 @@ import { installCursorSurfaces, resetCursorSurfaces } from "./install-agents.mjs
 import {
   checkMcpConfig,
   defaultProjectRootsFromSkill,
+  ensureProjectMcpConfig,
   installMcpConfig,
 } from "./install-mcp.mjs";
+import { getWorkspaceRoot, registerKnownWorkspace } from "../mcp/path-utils.mjs";
 import { runMcpSmokeTest } from "../mcp/tools.mjs";
 import { renderTaskPrompt } from "./render-task-prompt.mjs";
 import { checkCompletionReadiness } from "./lib/goal-completion.mjs";
@@ -105,6 +107,9 @@ async function main() {
     case "run":
       await runGoal();
       break;
+    case "workspace":
+      runWorkspace(args[1] || "register");
+      break;
     case "help":
     case "--help":
     case "-h":
@@ -134,6 +139,7 @@ Usage:
   node goalbuddy.mjs hub [--json]
   node goalbuddy.mjs run <docs/goals/slug> --auto N [--parallel] [--dry-run] [--json]
   node goalbuddy.mjs board <docs/goals/slug> [--host <host>] [--port <port>] [--once] [--json]
+  node goalbuddy.mjs workspace register [--json]
 
 Skill root: ${skillRoot}
 `);
@@ -167,7 +173,44 @@ function runInstall() {
     console.log(`MCP: ${entry.configPath}`);
   }
   console.log(`Next: enable the goalbuddy MCP server in Cursor Settings → MCP, then /goal-prep and /goal.`);
-  console.log(`User-level MCP (~/.cursor/mcp.json) works in every workspace; project .cursor/mcp.json is optional for this repo.`);
+  console.log(`User-level MCP (~/.cursor/mcp.json) works in every workspace; project .cursor/mcp.json is written for repos with docs/goals/.`);
+}
+
+function runWorkspace(subcommand) {
+  if (subcommand !== "register") {
+    console.error("Usage: node goalbuddy.mjs workspace register [--json]");
+    process.exit(2);
+  }
+
+  const workspaceRoot = resolve(process.cwd());
+  const json = hasFlag("--json");
+  const registered = registerKnownWorkspace(workspaceRoot);
+  const mcp = ensureProjectMcpConfig(workspaceRoot, skillRoot);
+  const payload = {
+    ok: registered.ok && mcp.ok,
+    workspace_root: workspaceRoot,
+    registered,
+    mcp,
+  };
+
+  if (json) {
+    console.log(JSON.stringify(payload, null, 2));
+  } else {
+    if (registered.ok) {
+      console.log(`Registered workspace: ${workspaceRoot}`);
+    } else {
+      console.error(`Could not register workspace: ${registered.reason}`);
+    }
+    if (mcp.ok) {
+      console.log(`MCP config: ${mcp.configPath}`);
+    } else if (mcp.reason) {
+      console.error(`MCP config skipped: ${mcp.reason}`);
+    }
+  }
+
+  if (!payload.ok) {
+    process.exit(1);
+  }
 }
 
 function runReset() {
@@ -179,6 +222,11 @@ async function runDoctor() {
   const goalReady = hasFlag("--goal-ready");
   const json = hasFlag("--json");
   const checks = [];
+  const cwd = resolve(process.cwd());
+  if (existsSync(join(cwd, "docs", "goals"))) {
+    registerKnownWorkspace(cwd);
+    ensureProjectMcpConfig(cwd, skillRoot);
+  }
 
   checks.push(nodeVersionCheck());
   checks.push(...requiredFilesCheck());
@@ -253,7 +301,7 @@ function mcpConfigCheck() {
 function mcpSmokeCheck() {
   try {
     const smoke = runMcpSmokeTest({
-      workspaceRoot: process.cwd(),
+      workspaceRoot: getWorkspaceRoot(),
       goal: "sample-cursor-smoke",
     });
     return {

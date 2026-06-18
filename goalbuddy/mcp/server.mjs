@@ -7,6 +7,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TOOL_HANDLERS } from "./tools.mjs";
 
+const workspaceRootSchema = z.string().optional().describe("Open workspace root when known (e.g. W:\\\\Experimental\\\\HTMX). Usually omitted; GoalBuddy resolves from goal slug.");
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const versionInfo = JSON.parse(readFileSync(join(__dirname, "..", "version.json"), "utf8"));
 
@@ -18,6 +20,7 @@ const server = new McpServer(
   {
     instructions: [
       "GoalBuddy MCP exposes read-only goal board tools for Cursor PM and subagents.",
+      "Workspace is resolved from the goal slug across Cursor workspace env vars and registered project roots.",
       "Call validate_state before advancing state.yaml.",
       "Call render_task_prompt before spawning Task subagents.",
       "Call validate_receipt before writing receipts into state.yaml.",
@@ -55,6 +58,7 @@ registerJsonTool(
   "List goals under docs/goals/ with status, active task, oracle health, and optional staleness.",
   {
     stale_days: z.number().int().positive().optional().describe("When set, include stale report for goals idle this many days."),
+    workspace_root: workspaceRootSchema,
   },
   TOOL_HANDLERS.list_goals,
 );
@@ -64,6 +68,7 @@ registerJsonTool(
   "Read and parse a goal state.yaml into structured JSON plus validation summary.",
   {
     goal: z.string().describe("Goal slug (sample-cursor-smoke) or path under docs/goals/."),
+    workspace_root: workspaceRootSchema,
   },
   TOOL_HANDLERS.get_goal_state,
 );
@@ -74,6 +79,7 @@ registerJsonTool(
   {
     goal: z.string().describe("Goal slug or path under docs/goals/."),
     task_id: z.string().regex(/^T\d{3}$/).optional().describe("Optional task id; defaults to active_task."),
+    workspace_root: workspaceRootSchema,
   },
   TOOL_HANDLERS.get_active_task,
 );
@@ -83,6 +89,7 @@ registerJsonTool(
   "Run GoalBuddy state validation (same logic as check-goal-state.mjs). Stop PM advance when ok is false.",
   {
     goal: z.string().describe("Goal slug or path under docs/goals/."),
+    workspace_root: workspaceRootSchema,
   },
   TOOL_HANDLERS.validate_state,
 );
@@ -93,6 +100,7 @@ registerJsonTool(
   {
     goal: z.string().describe("Goal slug or path under docs/goals/."),
     task_id: z.string().regex(/^T\d{3}$/).optional().describe("Optional task id; defaults to active_task."),
+    workspace_root: workspaceRootSchema,
   },
   TOOL_HANDLERS.render_task_prompt,
 );
@@ -102,6 +110,7 @@ registerJsonTool(
   "Parallel safety report with spawn_plan hints for disjoint Workers.",
   {
     goal: z.string().describe("Goal slug or path under docs/goals/."),
+    workspace_root: workspaceRootSchema,
   },
   TOOL_HANDLERS.parallel_plan,
 );
@@ -123,6 +132,7 @@ registerJsonTool(
   "Check readiness for goal.status: done (oracle, audit, workers).",
   {
     goal: z.string().describe("Goal slug or path under docs/goals/."),
+    workspace_root: workspaceRootSchema,
   },
   TOOL_HANDLERS.completion_check,
 );
@@ -134,6 +144,7 @@ registerJsonTool(
     summary: z.string().describe("Short session summary."),
     goal_slug: z.string().optional().describe("Limit to one goal slug; omit for all goals in workspace."),
     task_id: z.string().regex(/^T\d{3}$/).optional(),
+    workspace_root: workspaceRootSchema,
   },
   TOOL_HANDLERS.append_session_note,
 );

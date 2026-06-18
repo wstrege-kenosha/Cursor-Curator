@@ -29,6 +29,14 @@ Requires `npm install` in the cloned repo first so MCP dependencies exist under 
 
 After install, open **Cursor Settings → MCP** and confirm the `goalbuddy` server is enabled. `/goal` requires MCP tools for validation and prompt rendering.
 
+GoalBuddy resolves the workspace from the goal slug automatically. When you create a goal in **another repo**, run once from that repo root:
+
+```bash
+node ~/.cursor/skills/goalbuddy/scripts/goalbuddy.mjs workspace register
+```
+
+`/goal-prep` runs this step automatically. `doctor` also registers the current repo when `docs/goals/` exists.
+
 Project config (in the cloned repo):
 
 ```json
@@ -36,7 +44,8 @@ Project config (in the cloned repo):
   "mcpServers": {
     "goalbuddy": {
       "command": "node",
-      "args": ["goalbuddy/mcp/server.mjs"]
+      "args": ["goalbuddy/mcp/server.mjs"],
+      "cwd": "."
     }
   }
 }

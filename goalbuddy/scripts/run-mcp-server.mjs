@@ -6,6 +6,7 @@ import { resolveMcpRepoRoot } from "./install-mcp.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const skillRoot = resolve(__dirname, "..");
+process.env.GOALBUDDY_SKILL_ROOT = skillRoot;
 
 const repoRoot = resolveMcpRepoRoot(skillRoot);
 const serverPath = join(repoRoot, "goalbuddy", "mcp", "server.mjs");
