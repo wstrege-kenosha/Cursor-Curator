@@ -6,10 +6,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { buildColumns, createBoardPayload, writeBoardApp } from "../../../dist/board/objective-board.mjs";
 import {
-  BOARD_SKIN_COPY,
-  DEFAULT_BOARD_SKIN,
-  boardSkinColumnLabels,
-  normalizeBoardSkin,
+  BOARD_COLUMN_LABELS,
+  BOARD_COPY,
 } from "../../../dist/board/board-theme.mjs";
 import { parseArgs, startBoardServer } from "../../../dist/board/local-objective-board.mjs";
 
@@ -23,20 +21,17 @@ test("normalizes a dense objective into local board columns", () => {
   assert.equal(payload.counts.inProgress, 0);
   assert.equal(payload.counts.blocked, 5);
   assert.equal(payload.counts.completed, 9);
-  assert.deepEqual(payload.columns.map((column) => column.title), ["Todo", "In Progress", "Blocked", "Completed"]);
+  assert.deepEqual(payload.columns.map((column) => column.title), ["Queued", "Running", "Blocked", "Shipped"]);
 
   const scout = payload.tasks.find((task) => task.id === "T001");
   assert.equal(scout.receipt.summary, "T001 completed during the progressive board motion demo.");
 });
 
-test("exposes four board skins with column labels and copy", () => {
-  assert.equal(DEFAULT_BOARD_SKIN, "control-room");
-  assert.equal(normalizeBoardSkin("unknown"), "control-room");
-  assert.equal(boardSkinColumnLabels("proof-ledger", "todo").title, "Unverified claims");
-  assert.equal(BOARD_SKIN_COPY["relay-map"].sections.verify, "Summit check");
-  assert.equal(BOARD_SKIN_COPY["field-notes"].successCriteriaEyebrow, "North star");
-  assert.equal(BOARD_SKIN_COPY["control-room"].nowEyebrow, "Now");
-  assert.equal(BOARD_SKIN_COPY["relay-map"].validationEyebrow, "Trail checks");
+test("exposes board copy and column labels", () => {
+  assert.equal(BOARD_COLUMN_LABELS.todo.title, "Queued");
+  assert.equal(BOARD_COPY.sections.verify, "Verify");
+  assert.equal(BOARD_COPY.successCriteriaEyebrow, "Signal");
+  assert.equal(BOARD_COPY.nowEyebrow, "Now");
 });
 
 test("createBoardPayload includes validation completion and progress fields", () => {
@@ -45,8 +40,72 @@ test("createBoardPayload includes validation completion and progress fields", ()
   assert.ok("completion" in payload);
   assert.ok("lastVerification" in payload);
   assert.ok("progress" in payload);
+  assert.ok("usage" in payload);
   assert.equal(typeof payload.progress.total, "number");
   assert.equal(typeof payload.validation.ok, "boolean");
+});
+
+test("createBoardPayload attaches per-task metrics from notes/usage.json", () => {
+  const root = mkdtempSync(join(tmpdir(), "cursor-curator-usage-board-"));
+  try {
+    const objectiveDir = join(root, "usage-objective");
+    cpSync(resolve("cursor-curator/surfaces/local-objective-board/examples/sample-objective"), objectiveDir, { recursive: true });
+    mkdirSync(join(objectiveDir, "notes"), { recursive: true });
+    writeFileSync(join(objectiveDir, "notes", "usage.json"), `${JSON.stringify({
+      version: 1,
+      rollup: {
+        duration_ms: 120_000,
+        input_tokens: 50_000,
+        output_tokens: 2_000,
+        cache_read_tokens: 10_000,
+        cache_write_tokens: 0,
+        session_count: 1,
+      },
+      tasks: {
+        T001: {
+          duration_ms: 120_000,
+          input_tokens: 50_000,
+          output_tokens: 2_000,
+          cache_read_tokens: 10_000,
+          cache_write_tokens: 0,
+          session_count: 1,
+          last_session_at: "2026-06-25T12:00:00.000Z",
+          models: ["composer"],
+        },
+      },
+      unattributed: {
+        duration_ms: 0,
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+        session_count: 0,
+      },
+      sessions: [],
+    }, null, 2)}\n`, "utf8");
+
+    const payload = createBoardPayload(objectiveDir);
+    assert.equal(payload.usage.present, true);
+    assert.equal(payload.usage.visible, true);
+    assert.equal(payload.usage.rollup.session_count, 1);
+    assert.match(payload.usage.summary, /agent time/);
+    const scout = payload.tasks.find((task) => task.id === "T001");
+    assert.equal(scout.metrics.session_count, 1);
+    assert.equal(scout.metrics.input_tokens, 50_000);
+    assert.match(scout.metrics_badge, /tok/);
+
+    writeBoardApp(objectiveDir);
+    const html = readFileSync(join(objectiveDir, ".cursor-curator-board", "index.html"), "utf8");
+    const js = readFileSync(join(objectiveDir, ".cursor-curator-board", "app.js"), "utf8");
+    assert.match(html, /id="progress-usage"/);
+    assert.match(html, /id="goal-agent-time"/);
+    assert.match(html, /id="goal-tokens"/);
+    assert.match(js, /renderGoalMeta/);
+    assert.match(js, /usage\?\.visible/);
+    assert.match(js, /metrics_badge/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("generated board HTML includes new strip containers", () => {
@@ -59,10 +118,12 @@ test("generated board HTML includes new strip containers", () => {
     const html = readFileSync(join(appDir, "index.html"), "utf8");
     const css = readFileSync(join(appDir, "styles.css"), "utf8");
     assert.match(html, /id="validation-banner"/);
+    assert.match(html, /id="usage-warning"/);
     assert.match(html, /id="now-hero"/);
     assert.match(html, /id="intake-strip"/);
     assert.match(html, /id="progress-rail"/);
-    assert.match(html, /id="session-pin"/);
+    assert.match(html, /id="session-drawer"/);
+    assert.match(html, /id="session-drawer-trigger"/);
     assert.match(css, /var\(--strip-surface/);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -342,9 +403,8 @@ test("writes a minimal Cursor Curator web app into the objective directory", () 
   const js = readFileSync(join(appDir, "app.js"), "utf8");
   const logo = readFileSync(join(appDir, "curator-mark.png"));
 
-  assert.match(html, /data-skin="control-room"/);
   assert.match(html, /id="objective-eyebrow"/);
-  assert.match(html, /id="setting-skin"/);
+  assert.match(html, /id="setting-density"/);
   assert.match(html, /class="board-frame"/);
   assert.match(html, /curator-mark\.png/);
   assert.match(html, /class="theme-board"/);
@@ -360,34 +420,31 @@ test("writes a minimal Cursor Curator web app into the objective directory", () 
   assert.match(html, /ported from upstream/);
   assert.match(html, /id="settings-button"/);
   assert.match(html, /id="settings-popover"/);
-  assert.match(css, /\[data-skin="control-room"\]/);
-  assert.match(css, /\[data-skin="field-notes"\]/);
-  assert.match(css, /\[data-skin="proof-ledger"\]/);
-  assert.match(css, /\[data-skin="relay-map"\]/);
   assert.match(css, /--canvas: #141c26/);
   assert.match(css, /caret-blink/);
-  assert.match(css, /relay-trail-draw/);
+  assert.match(css, /scan-line/);
   assert.match(css, /\.topbar-primary/);
   assert.match(css, /\.board-switcher\.is-empty \{\n  display: none;/);
   assert.match(css, /active-card-orbit/);
   assert.match(css, /:root\[data-motion="reduce"\] \.task-card\.is-active::before/);
-  assert.match(css, /:root\[data-theme="dark"\]/);
   assert.match(css, /:root\[data-density="compact"\] \.task-card/);
   assert.match(css, /:root\[data-completed-visibility="collapse"\]/);
   assert.match(css, /-webkit-line-clamp: 5/);
   assert.match(css, /\.subobjective-board/);
   assert.match(css, /\.board-error/);
+  assert.match(css, /\.detail-panel/);
+  assert.match(js, /let currentBoard = null;/);
+  assert.match(js, /function columnLabels\(column\)/);
+  assert.match(js, /renderUsageWarning/);
+  assert.match(js, /usage_warning/);
   assert.match(js, /new EventSource\("\.\/events"\)/);
   assert.match(js, /fetch\("\.\.\/api\/boards"/);
   assert.match(js, /fetch\("\.\.\/api\/settings"/);
   assert.match(js, /fetch\("https:\/\/api\.github\.com\/repos\/wstrege-kenosha\/Cursor-Curator"/);
   assert.match(js, /cursor-curator\.localBoardSettings\.v1/);
-  assert.match(js, /document\.documentElement\.dataset\.skin/);
-  assert.match(js, /document\.documentElement\.dataset\.theme/);
-  assert.match(js, /"control-room"/);
-      assert.match(js, /cursor-curator\.boardSkin\.v1/);
-      assert.match(js, /writeStoredSkin/);
-      assert.match(js, /readStoredSkin/);
+  assert.match(js, /document\.documentElement\.dataset\.density/);
+  assert.match(js, /boardCopy/);
+  assert.match(js, /detailPanelText/);
   assert.match(js, /rememberCurrentBoard/);
   assert.match(js, /settingsButtonEl\.setAttribute\("aria-label"/);
   assert.match(js, /animateCardMoves/);
@@ -415,8 +472,6 @@ test("serves global local board settings with defensive normalization", async ()
       const initialResponse = await fetch(`${server.hubUrl}api/settings`);
       assert.equal(initialResponse.status, 200);
       assert.deepEqual((await initialResponse.json()).settings, {
-        skin: "control-room",
-        theme: "system",
         density: "comfortable",
         completedVisibility: "show",
         boardOpenBehavior: "last",
@@ -429,8 +484,6 @@ test("serves global local board settings with defensive normalization", async ()
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           settings: {
-            skin: "field-notes",
-            theme: "dark",
             density: "compact",
             completedVisibility: "collapse",
             boardOpenBehavior: "newest",
@@ -442,25 +495,21 @@ test("serves global local board settings with defensive normalization", async ()
       });
       assert.equal(updateResponse.status, 200);
       assert.deepEqual((await updateResponse.json()).settings, {
-        skin: "field-notes",
-        theme: "dark",
         density: "compact",
         completedVisibility: "collapse",
         boardOpenBehavior: "newest",
         motion: "reduce",
         lastBoardPath: "/settings-goal/",
       });
-      assert.match(readFileSync(settingsPath, "utf8"), /"skin": "field-notes"/);
+      assert.match(readFileSync(settingsPath, "utf8"), /"density": "compact"/);
 
       const invalidResponse = await fetch(`${server.hubUrl}api/settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ settings: { theme: "neon", density: "tiny", motion: "allow" } }),
+        body: JSON.stringify({ settings: { density: "tiny", motion: "allow" } }),
       });
       assert.equal(invalidResponse.status, 200);
       assert.deepEqual((await invalidResponse.json()).settings, {
-        skin: "control-room",
-        theme: "system",
         density: "comfortable",
         completedVisibility: "show",
         boardOpenBehavior: "last",
@@ -480,15 +529,13 @@ test("serves global local board settings with defensive normalization", async ()
   }
 });
 
-test("adds default skin when reading legacy settings files without skin", async () => {
+test("normalizes legacy settings files without density", async () => {
   const root = mkdtempSync(join(tmpdir(), "cursor-curator-legacy-board-settings-"));
   const settingsPath = join(root, "settings.json");
   const previousSettingsPath = process.env.CURATOR_LOCAL_BOARD_SETTINGS_PATH;
   try {
     process.env.CURATOR_LOCAL_BOARD_SETTINGS_PATH = settingsPath;
     writeFileSync(settingsPath, `${JSON.stringify({
-      theme: "dark",
-      density: "compact",
       completedVisibility: "show",
       boardOpenBehavior: "last",
       motion: "system",
@@ -504,9 +551,7 @@ test("adds default skin when reading legacy settings files without skin", async 
       const response = await fetch(`${server.hubUrl}api/settings`);
       assert.equal(response.status, 200);
       assert.deepEqual((await response.json()).settings, {
-        skin: "control-room",
-        theme: "dark",
-        density: "compact",
+        density: "comfortable",
         completedVisibility: "show",
         boardOpenBehavior: "last",
         motion: "system",

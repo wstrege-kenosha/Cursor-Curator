@@ -1,0 +1,12 @@
+.usage-badge {
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.01em;
+}
+
+.progress-usage {
+  color: var(--ink-body, var(--ink));
+  font-weight: 500;
+}
+

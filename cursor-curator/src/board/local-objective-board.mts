@@ -6,7 +6,6 @@ import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createBoardPayload, writeBoardApp } from "./objective-board.mjs";
-import { BOARD_SKIN_IDS, DEFAULT_BOARD_SKIN } from "./board-theme.mjs";
 import { resolveStatePath } from "../state/objective-state.mjs";
 
 const textTypes = {
@@ -19,8 +18,6 @@ const textTypes = {
 
 const SETTINGS_VERSION = 2;
 const SETTINGS_DEFAULTS = {
-  skin: DEFAULT_BOARD_SKIN,
-  theme: "system",
   density: "comfortable",
   completedVisibility: "show",
   boardOpenBehavior: "last",
@@ -28,8 +25,6 @@ const SETTINGS_DEFAULTS = {
   lastBoardPath: "",
 };
 const SETTINGS_OPTIONS = {
-  skin: new Set(BOARD_SKIN_IDS),
-  theme: new Set(["system", "light", "dark"]),
   density: new Set(["comfortable", "compact"]),
   completedVisibility: new Set(["show", "collapse"]),
   boardOpenBehavior: new Set(["last", "newest"]),

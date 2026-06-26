@@ -1,0 +1,66 @@
+h1 {
+  font-size: clamp(1.35rem, 2.4vw, 1.85rem);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.success-criteria-strip {
+  padding: 18px 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-panel);
+  background: var(--surface-muted);
+  margin-top: 8px;
+}
+
+.task-card.is-active {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent), 0 12px 32px var(--accent-glow);
+}
+
+.task-card.is-active::before,
+.task-card.is-active::after {
+  display: none;
+}
+
+.task-card.is-active .task-id::before {
+  content: "▌";
+  margin-right: 2px;
+  color: var(--accent);
+  animation: caret-blink 1s step-end infinite;
+}
+
+.task-card.is-active .scan-line {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.task-card.is-active .scan-line::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: scan-line 1.2s var(--ease-out) 1 both;
+}
+
+.receipt-transcript {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 6px;
+  background: var(--modal-transcript-bg);
+  color: var(--modal-transcript-ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-card.is-active .task-id::before,
+  .task-card.is-active .scan-line::after {
+    animation: none;
+  }
+}

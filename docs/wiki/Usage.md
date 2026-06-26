@@ -45,7 +45,22 @@ node ~/.cursor/skills/cursor-curator/dist/cli/curator.mjs doctor --objective-rea
 - **Hub** (all objectives): http://curator.localhost:41737/
 - **Single objective**: http://curator.localhost:41737/<slug>/
 
+Boards show **agent time and token usage** per task when Cursor hooks are installed (`curator install` writes `~/.cursor/hooks.json`). Metrics accumulate in `docs/objectives/<slug>/notes/usage.json` and appear on the board progress rail, task cards, and hub cards.
+
 Use http://127.0.0.1:41737/ if `curator.localhost` does not resolve.
+
+### Usage metrics (hooks)
+
+Install registers two hooks that call `cursor-curator/scripts/hooks/append-usage-metrics.mjs`:
+
+- **`stop`** — PM/agent session end; also appends `notes/SESSION.md`
+- **`subagentStop`** (matcher: `objective-scout|objective-worker|objective-approval-gate`) — higher-fidelity per-task attribution
+
+Each event reads `duration_ms`, `input_tokens`, `output_tokens`, and cache token fields from the Cursor hook payload (when present) and attributes usage to `active_task` in `state.json` when that task is `active`. Otherwise usage goes to an **unattributed** bucket (shown as a board warning).
+
+`input_tokens` is the total input count Cursor reports (includes cache read/write). Rollups do not double-count cache fields.
+
+For project-level hooks instead of user hooks, copy [`cursor-curator/hooks.example.json`](../../cursor-curator/hooks.example.json) to `.cursor/hooks.json` in your repo and adjust paths.
 
 ## Repo layout
 

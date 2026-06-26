@@ -1,8 +1,15 @@
 {
+  "version": 1,
   "hooks": {
     "stop": [
       {
-        "command": "node curator/scripts/hooks/append-session-note.mjs"
+        "command": "node cursor-curator/scripts/hooks/append-usage-metrics.mjs"
+      }
+    ],
+    "subagentStop": [
+      {
+        "command": "node cursor-curator/scripts/hooks/append-usage-metrics.mjs",
+        "matcher": "objective-scout|objective-worker|objective-approval-gate"
       }
     ]
   }

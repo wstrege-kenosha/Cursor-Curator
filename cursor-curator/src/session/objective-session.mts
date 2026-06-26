@@ -2,7 +2,8 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { validateObjectiveState } from "../state/objective-state.mjs";
 import { readLastVerificationFromState } from "../verify/objective-verify.mjs";
-import { discoverObjectiveStatePaths, findStaleObjectives } from "../stale/objective-stale.mjs";
+import { findStaleObjectives } from "../stale/objective-stale.mjs";
+import { resolveObjectiveDirsFromHook } from "../hook/objective-hook-resolve.mjs";
 
 export interface AppendSessionNoteOptions {
   workspaceRoot?: string;
@@ -32,15 +33,23 @@ export function appendSessionNote(options: AppendSessionNoteOptions = {}) {
   ];
   if (taskId) lines.push(`- task: ${taskId}`);
 
-  const statePaths = discoverObjectiveStatePaths([workspaceRoot]).filter((statePath) => {
-    if (!goalSlug) return true;
-    const slug = statePath.split(/[/\\]/).slice(-2, -1)[0];
-    return slug === goalSlug;
-  });
+  const payload = {
+    workspace_roots: [workspaceRoot],
+    cwd: workspaceRoot,
+    objective_slug: goalSlug ?? undefined,
+    task_id: taskId ?? undefined,
+  };
+  const objectiveDirs = resolveObjectiveDirsFromHook(payload, goalSlug);
+
+  if (!objectiveDirs.length) {
+    const skipped = goalSlug
+      ? "objective not found"
+      : "ambiguous objective; set objective_slug";
+    return { ok: true, skipped, appended: [] as string[], summary, timestamp };
+  }
 
   const appended: string[] = [];
-  for (const statePath of statePaths) {
-    const objectiveDir = resolve(statePath, "..");
+  for (const objectiveDir of objectiveDirs) {
     const notesDir = join(objectiveDir, "notes");
     mkdirSync(notesDir, { recursive: true });
     const sessionPath = join(notesDir, "SESSION.md");

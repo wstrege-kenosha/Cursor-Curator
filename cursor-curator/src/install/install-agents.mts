@@ -22,6 +22,22 @@ const commandsDest = join(cursorHome, "commands");
 const manifestPath = join(skillRoot, "install.json");
 const LEGACY_AGENTS = ["goal-scout.md", "goal-approval-gate.md", "goal-worker.md"];
 const LEGACY_COMMANDS = ["curator-prep.md"];
+const HOOK_SCRIPT = "scripts/hooks/append-usage-metrics.mjs";
+const CURATOR_HOOK_MARKER = "append-usage-metrics.mjs";
+
+export interface InstallHooksResult {
+  path: string;
+  status: "installed" | "unchanged";
+  command: string;
+}
+
+export interface InstallSurfacesResult {
+  agents: InstallSurfaceEntry[];
+  commands: InstallSurfaceEntry[];
+  hooks: InstallHooksResult | null;
+  errors: string[];
+  removed: string[];
+}
 
 export interface InstallSurfaceEntry {
   file: string;
@@ -29,15 +45,8 @@ export interface InstallSurfaceEntry {
   status: string;
 }
 
-export interface InstallSurfacesResult {
-  agents: InstallSurfaceEntry[];
-  commands: InstallSurfaceEntry[];
-  errors: string[];
-  removed: string[];
-}
-
 export function installCursorSurfaces({ force = false, quiet = false } = {}): InstallSurfacesResult {
-  const installed: InstallSurfacesResult = { agents: [], commands: [], errors: [], removed: [] };
+  const installed: InstallSurfacesResult = { agents: [], commands: [], hooks: null, errors: [], removed: [] };
 
   mkdirSync(agentsDest, { recursive: true });
   mkdirSync(commandsDest, { recursive: true });
@@ -98,7 +107,83 @@ export function installCursorSurfaces({ force = false, quiet = false } = {}): In
     skillRoot,
   };
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+  try {
+    installed.hooks = installCursorHooks({ force, quiet });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    installed.errors.push(message);
+  }
+
   return installed;
+}
+
+export function installCursorHooks({
+  skillRoot: root = skillRoot,
+  cursorHome: home = cursorHome,
+  force = false,
+  quiet = false,
+}: {
+  skillRoot?: string;
+  cursorHome?: string;
+  force?: boolean;
+  quiet?: boolean;
+} = {}): InstallHooksResult {
+  const hookScript = join(resolve(root), HOOK_SCRIPT);
+  if (!existsSync(hookScript)) {
+    throw new Error(`Missing hook script: ${hookScript}`);
+  }
+
+  const command = `${process.execPath} ${hookScript}`;
+  const hooksPath = join(home, "hooks.json");
+  const desiredStop = { command };
+  const desiredSubagentStop = {
+    command,
+    matcher: "objective-scout|objective-worker|objective-approval-gate",
+  };
+
+  let existing: { version?: number; hooks?: Record<string, unknown> } = { version: 1, hooks: {} };
+  if (existsSync(hooksPath)) {
+    try {
+      existing = JSON.parse(readFileSync(hooksPath, "utf8")) as typeof existing;
+    } catch {
+      if (!quiet) console.log(`replacing invalid ${hooksPath}`);
+    }
+  }
+
+  const hooks = existing.hooks && typeof existing.hooks === "object" ? { ...existing.hooks } : {};
+  const nextStop = mergeCuratorHookList(hooks.stop, desiredStop);
+  const nextSubagentStop = mergeCuratorHookList(hooks.subagentStop, desiredSubagentStop);
+  const unchanged =
+    !force
+    && existsSync(hooksPath)
+    && JSON.stringify(hooks.stop) === JSON.stringify(nextStop)
+    && JSON.stringify(hooks.subagentStop) === JSON.stringify(nextSubagentStop);
+
+  hooks.stop = nextStop;
+  hooks.subagentStop = nextSubagentStop;
+
+  const payload = { version: 1, hooks };
+  writeFileSync(hooksPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  if (!quiet) console.log(`${unchanged ? "updated" : "installed"} ${hooksPath}`);
+
+  return {
+    path: hooksPath,
+    status: unchanged ? "unchanged" : "installed",
+    command,
+  };
+}
+
+function isCuratorHookEntry(entry: unknown): boolean {
+  if (!entry || typeof entry !== "object") return false;
+  const command = String((entry as { command?: string }).command || "");
+  return command.includes("append-session-note.mjs") || command.includes(CURATOR_HOOK_MARKER);
+}
+
+function mergeCuratorHookList(existing: unknown, desired: { command: string; matcher?: string }) {
+  const list = Array.isArray(existing) ? existing.filter((entry) => !isCuratorHookEntry(entry)) : [];
+  list.push(desired);
+  return list;
 }
 
 export function resetCursorSurfaces({

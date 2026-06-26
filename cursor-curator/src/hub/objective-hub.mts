@@ -10,6 +10,7 @@ import {
 } from "../board/board-theme.mjs";
 import { readBoardRepoLinks } from "../board/port-metadata.mjs";
 import { readLastVerificationFromState } from "../verify/objective-verify.mjs";
+import { buildUsageBoardView, readUsageSummary } from "../usage/objective-usage.mjs";
 
 export function discoverObjectiveDirs(roots: string[] = [process.cwd()]): string[] {
   return discoverObjectiveStatePaths(roots).map((statePath) => resolve(statePath, ".."));
@@ -39,6 +40,9 @@ export function buildHubEntry(objectiveDir: string, baseUrl = "") {
       last_verification: null,
       stale_ms: null,
       updated_at: null,
+      usage_rollup: null,
+      usage_summary: null,
+      usage_has_unattributed: false,
     };
   }
   const validation = validateObjectiveState(statePath);
@@ -47,6 +51,7 @@ export function buildHubEntry(objectiveDir: string, baseUrl = "") {
   const boardPath = `/${slug}/`;
   const successCriteriaSignal = readSuccessCriteriaSignal(statePath);
   const activeTask = findActiveTaskType(statePath, validation.active_task);
+  const usage = buildUsageBoardView(readUsageSummary(root));
 
   return {
     slug,
@@ -67,6 +72,9 @@ export function buildHubEntry(objectiveDir: string, baseUrl = "") {
     last_verification: readLastVerification(statePath),
     stale_ms: stateStat ? Date.now() - stateStat.mtimeMs : null,
     updated_at: stateStat ? new Date(stateStat.mtimeMs).toISOString() : null,
+    usage_rollup: usage.visible ? usage.rollup : null,
+    usage_summary: usage.visible ? usage.summary : null,
+    usage_has_unattributed: usage.has_unattributed,
   };
 }
 
@@ -185,6 +193,10 @@ ${hubPageCss()}
             <div>
               <dt>Updated</dt>
               <dd>\${objective.updated_at ? new Date(objective.updated_at).toLocaleString() : "—"}</dd>
+            </div>
+            <div>
+              <dt>Usage</dt>
+              <dd>\${objective.usage_summary || "—"}</dd>
             </div>
           </dl>
         </article>\`).join("") + '</div>';

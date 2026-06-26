@@ -28,8 +28,9 @@ The installer:
 2. Copies `cursor-curator/` and `objective-prep/` into `~/.cursor/skills` (macOS/Linux) or `%USERPROFILE%\.cursor\skills` (Windows)
 3. Runs `npm install --omit=dev` inside the copied `cursor-curator` skill (bundles `zod`, `yaml`, MCP SDK for skill-only use)
 4. Runs `curator.mjs install` to register agents (`objective-scout`, `objective-approval-gate`, `objective-worker`) and slash commands (`/objective-prep`, `/objective`, `/objective-board`)
-5. Installs a global `curator` CLI shim to `~/.cursor/bin`
-6. Merges the **cursor-curator** MCP server into `~/.cursor/mcp.json` (launcher script + repo path for npm deps) and, when run from this repo, also into the project `.cursor/mcp.json` (portable paths for contributors).
+5. Merges **Cursor hooks** into `~/.cursor/hooks.json` (`stop` and `subagentStop`) so agent time and token usage are recorded per objective in `notes/usage.json` (requires Cursor 1.7+ with hook token fields)
+6. Installs a global `curator` CLI shim to `~/.cursor/bin`
+7. Merges the **cursor-curator** MCP server into `~/.cursor/mcp.json` (launcher script + repo path for npm deps) and, when run from this repo, also into the project `.cursor/mcp.json` (portable paths for contributors).
 
 Contributors need `npm install` at the repo root for tests and builds. Skill-only installs after step 3 do not require the clone’s `node_modules` for MCP/board runtime.
 

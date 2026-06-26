@@ -77,6 +77,24 @@ Doctor `mcp:smoke` must pass against `docs/objectives/sample-cursor-smoke/state.
 - Use http://127.0.0.1:41737/ (hub) or http://127.0.0.1:41737/<slug>/ if `curator.localhost` does not resolve.
 - Start the board: `node cursor-curator/dist/cli/curator.mjs board docs/objectives/<slug>`
 
+## Board shows no time or token usage
+
+1. Re-run install so hooks are merged into `~/.cursor/hooks.json`:
+
+   ```bash
+   npm run build
+   node cursor-curator/dist/cli/curator.mjs install
+   ```
+
+2. Restart Cursor (hooks reload on restart if they do not pick up immediately).
+3. Confirm **Cursor Settings → Hooks** lists `stop` and `subagentStop` entries pointing at `append-usage-metrics.mjs`.
+4. Run an `/objective` turn with a Task subagent (`objective-scout`, `objective-worker`, or `objective-approval-gate`) — `subagentStop` gives the best per-task attribution.
+5. Check `docs/objectives/<slug>/notes/usage.json` exists and grows after agent sessions.
+6. On **Windows**, hooks must write files directly (Cursor Curator does); if hooks run but `usage.json` is empty, check the Hooks output channel for script errors.
+7. Older Cursor builds may omit token fields on the `stop` payload — duration may still record; upgrade Cursor if all counters stay zero.
+
+Unattributed sessions (board warning) usually mean `active_task` was not `active` when the hook fired — common during PM planning turns.
+
 ## Task subagents missing
 
 ```bash

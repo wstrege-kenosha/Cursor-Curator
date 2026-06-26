@@ -198,6 +198,9 @@ function runInstall(): void {
   console.log(`CLI: ${cliResult.cmdPath}`);
   console.log(`Agents: ${join(cursorHome, "agents")}`);
   console.log(`Commands: ${join(cursorHome, "commands")}`);
+  if (result.hooks) {
+    console.log(`Hooks: ${result.hooks.path}`);
+  }
   for (const entry of mcpResult.installed) {
     console.log(`MCP: ${entry.configPath}`);
   }
