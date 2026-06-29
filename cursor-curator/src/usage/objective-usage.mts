@@ -21,6 +21,7 @@ import {
   logicalUsagePath,
 } from "../db/usage-repository.mjs";
 import { findObjectiveSlugByDirPath } from "../db/state-repository.mjs";
+import { resolveWorkspaceForObjective } from "../mcp/path-utils.mjs";
 
 export interface UsageCounters {
   duration_ms: number;
@@ -194,7 +195,7 @@ export function parseHookUsagePayload(payload: Record<string, unknown>): ParsedH
 export { discoverAllObjectiveDirsFromHook, resolveObjectiveDirsFromHook } from "../hook/objective-hook-resolve.mjs";
 
 export function workspaceRootFromObjectiveDir(objectiveDir: string): string {
-  return resolve(objectiveDir, "..", "..", "..");
+  return resolveWorkspaceForObjective(objectiveDir);
 }
 
 export function readActiveTaskId(statePath: string, workspaceRoot?: string): string | null {
