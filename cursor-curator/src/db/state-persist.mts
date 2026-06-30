@@ -4,20 +4,24 @@ import type { StateV3, StateV3Task } from "../schema/state-v3.js";
 import { invalidateHubPayloadCache } from "../hub/objective-hub.mjs";
 import {
   decomposeStateV3,
+  TASK_LIST_NAMES,
   type ObjectiveRow,
 } from "./state-mapper.mjs";
 import { normalizeStoredDirPath } from "./objective-lookup.mjs";
 import { ensureWorkspace, withTransaction } from "./connection.mjs";
-import { getDb, loadStateV3, objectiveRowBySlug } from "./state-repository-read.mjs";
+import { getDb, objectiveRowBySlug } from "./state-repository-db.mjs";
+import { loadStateV3 } from "./state-repository-read.mjs";
 import { replaceSubobjectiveLinks } from "./state-subobjective-links.mjs";
 import { persistObjectivePatchInDb } from "./state-objective-patch.mjs";
 import {
+  clearObjectiveSatellites,
   insertObjectiveAgents,
   insertObjectiveChecks,
   insertObjectiveIntake,
   insertObjectiveRules,
   insertObjectiveSuccessCriteria,
   insertObjectiveVisualBoard,
+  upsertObjectiveChecks,
 } from "./objective-satellite-writes.mjs";
 import type { LoadedObjective } from "./state-repository-types.mjs";
 
@@ -30,18 +34,9 @@ export function clearTasksOnly(db: Database, objectiveId: number): void {
   db.query("DELETE FROM tasks WHERE objective_id = ?").run(objectiveId);
 }
 
-function clearObjectiveSatellitesOnly(db: Database, objectiveId: number): void {
-  db.query("DELETE FROM objective_intake WHERE objective_id = ?").run(objectiveId);
-  db.query("DELETE FROM objective_success_criteria WHERE objective_id = ?").run(objectiveId);
-  db.query("DELETE FROM objective_rules WHERE objective_id = ?").run(objectiveId);
-  db.query("DELETE FROM objective_agents WHERE objective_id = ?").run(objectiveId);
-  db.query("DELETE FROM objective_visual_board WHERE objective_id = ?").run(objectiveId);
-  db.query("DELETE FROM objective_checks WHERE objective_id = ?").run(objectiveId);
-}
-
 export function clearObjectiveDependents(db: Database, objectiveId: number): void {
   clearTasksOnly(db, objectiveId);
-  clearObjectiveSatellitesOnly(db, objectiveId);
+  clearObjectiveSatellites(db, objectiveId);
 }
 
 export function insertObjectiveSatellites(db: Database, objectiveId: number, parts: DecomposedState): void {
@@ -221,32 +216,9 @@ export function persistReceiptState(db: Database, objectiveId: number, state: St
   }
 
   if (state.checks?.last_verification !== undefined) {
-    const checksRow = db
-      .query<{ objective_id: number }, [number]>(
-        "SELECT objective_id FROM objective_checks WHERE objective_id = ?",
-      )
-      .get(objectiveId);
-    const verificationJson = JSON.stringify(state.checks.last_verification);
-    if (checksRow) {
-      db.query(
-        "UPDATE objective_checks SET last_verification_json = ?, dirty_fingerprint = COALESCE(?, dirty_fingerprint) WHERE objective_id = ?",
-      ).run(verificationJson, state.checks.dirty_fingerprint ?? null, objectiveId);
-    } else {
-      db.query(
-        "INSERT INTO objective_checks (objective_id, dirty_fingerprint, last_verification_json) VALUES (?, ?, ?)",
-      ).run(objectiveId, state.checks.dirty_fingerprint ?? null, verificationJson);
-    }
+    upsertObjectiveChecks(db, objectiveId, state.checks, { preserveDirtyFingerprintWhenNull: true });
   }
 }
-
-const TASK_LIST_NAMES = [
-  "inputs",
-  "constraints",
-  "expected_output",
-  "allowed_files",
-  "verify",
-  "stop_if",
-] as const;
 
 export function persistTaskPatchInDb(
   db: Database,

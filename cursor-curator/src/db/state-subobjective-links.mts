@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { StateV3 } from "../schema/state-v3.js";
-import { resolveChildObjectiveInWorkspace } from "../subobjective/subobjective-resolve.mjs";
-import { objectiveRowBySlug } from "./state-repository-read.mjs";
+import { resolveChildObjectiveInWorkspace, resolveChildObjectiveFromPath } from "../subobjective/subobjective-resolve.mjs";
+import { objectiveRowBySlug } from "./state-repository-db.mjs";
 
 export function insertSubobjectiveLinks(
   db: Database,
@@ -13,6 +13,10 @@ export function insertSubobjectiveLinks(
 ): void {
   for (const task of state.tasks) {
     if (!task.subobjective?.path) continue;
+    const fromPath = resolveChildObjectiveFromPath(dirPath, task.subobjective.path);
+    if (!fromPath) {
+      throw new Error(`Invalid sub-objective path for ${task.id}: ${task.subobjective.path}`);
+    }
     const child = resolveChildObjectiveInWorkspace(workspaceRoot, dirPath, task.subobjective.path);
     if (!child) continue;
     const childRow = objectiveRowBySlug(db, workspaceId, child.slug);

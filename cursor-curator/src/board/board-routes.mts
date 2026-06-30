@@ -102,7 +102,7 @@ function handleOpenRedirect(ctx: BoardRouteContext): boolean {
   return true;
 }
 
-async function handleHubPage(ctx: BoardRouteContext): Promise<boolean> {
+function handleHubPage(ctx: BoardRouteContext): boolean {
   const hubPaths = new Set(["/", "/hub", "/boards"]);
   if (!hubPaths.has(ctx.url.pathname)) {
     return false;

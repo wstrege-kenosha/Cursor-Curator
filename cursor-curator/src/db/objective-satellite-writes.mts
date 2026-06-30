@@ -167,6 +167,7 @@ export function upsertObjectiveChecks(
   db: Database,
   objectiveId: number,
   checks: StateV3["checks"],
+  options: { preserveDirtyFingerprintWhenNull?: boolean } = {},
 ): void {
   if (!checks) {
     db.query("DELETE FROM objective_checks WHERE objective_id = ?").run(objectiveId);
@@ -179,10 +180,25 @@ export function upsertObjectiveChecks(
     .get(objectiveId);
   const verificationJson = checks.last_verification ? JSON.stringify(checks.last_verification) : null;
   if (checksRow) {
-    db.query(
-      "UPDATE objective_checks SET dirty_fingerprint = ?, last_verification_json = ? WHERE objective_id = ?",
-    ).run(checks.dirty_fingerprint ?? null, verificationJson, objectiveId);
+    if (options.preserveDirtyFingerprintWhenNull) {
+      db.query(
+        "UPDATE objective_checks SET dirty_fingerprint = COALESCE(?, dirty_fingerprint), last_verification_json = ? WHERE objective_id = ?",
+      ).run(checks.dirty_fingerprint ?? null, verificationJson, objectiveId);
+    } else {
+      db.query(
+        "UPDATE objective_checks SET dirty_fingerprint = ?, last_verification_json = ? WHERE objective_id = ?",
+      ).run(checks.dirty_fingerprint ?? null, verificationJson, objectiveId);
+    }
     return;
   }
   insertObjectiveChecks(db, objectiveId, checks);
+}
+
+export function clearObjectiveSatellites(db: Database, objectiveId: number): void {
+  replaceObjectiveIntake(db, objectiveId, null);
+  db.query("DELETE FROM objective_success_criteria WHERE objective_id = ?").run(objectiveId);
+  replaceObjectiveRules(db, objectiveId, null);
+  db.query("DELETE FROM objective_agents WHERE objective_id = ?").run(objectiveId);
+  replaceObjectiveVisualBoard(db, objectiveId, undefined);
+  upsertObjectiveChecks(db, objectiveId, undefined);
 }

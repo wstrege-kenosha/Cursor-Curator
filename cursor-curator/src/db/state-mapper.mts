@@ -17,7 +17,7 @@ const KNOWN_RULE_KEYS = new Set([
   "slice_policy",
 ]);
 
-const TASK_LIST_NAMES = [
+export const TASK_LIST_NAMES = [
   "inputs",
   "constraints",
   "expected_output",
@@ -26,7 +26,7 @@ const TASK_LIST_NAMES = [
   "stop_if",
 ] as const;
 
-type TaskListName = (typeof TASK_LIST_NAMES)[number];
+export type TaskListName = (typeof TASK_LIST_NAMES)[number];
 
 export interface ObjectiveRow {
   id: number;

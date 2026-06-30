@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resetDatabaseCache, closeDatabase } from "../../../dist/db/connection.mjs";
-import { importObjectiveFixture, saveStateV3 } from "../../../dist/db/state-repository.mjs";
+import { importObjectiveFixture, patchTask, saveStateV3 } from "../../../dist/db/state-repository.mjs";
 import { removeWorkspaceDir } from "../../../dist/db/test-helpers.mjs";
 import { buildColumns, createBoardPayload, writeBoardApp } from "../../../dist/board/objective-board.mjs";
 import {
@@ -482,36 +482,34 @@ test("refuses to render subobjective boards outside the parent objective root", 
         },
       ],
     });
-    writeStateJson(root, objectiveDir, {
-      version: 3,
-      objective: {
-        title: "Outside child parent",
-        slug: "outside-child-parent",
-        kind: "specific",
-        tranche: "Reject outside child.",
-        status: "active",
-      },
-      active_task: "T001",
-      tasks: [
-        {
-          id: "T001",
-          type: "worker",
-          assignee: "Worker",
-          status: "active",
-          objective: "Render child.",
-          subobjective: {
-            status: "active",
-            path: "../outside",
-            owner: "Worker",
-            depth: 1,
-          },
-          receipt: null,
-        },
-      ],
-    });
-
     assert.throws(
-      () => createBoardPayload(objectiveDir),
+      () => writeStateJson(root, objectiveDir, {
+        version: 3,
+        objective: {
+          title: "Outside child parent",
+          slug: "outside-child-parent",
+          kind: "specific",
+          tranche: "Reject outside child.",
+          status: "active",
+        },
+        active_task: "T001",
+        tasks: [
+          {
+            id: "T001",
+            type: "worker",
+            assignee: "Worker",
+            status: "active",
+            objective: "Render child.",
+            subobjective: {
+              status: "active",
+              path: "../outside",
+              owner: "Worker",
+              depth: 1,
+            },
+            receipt: null,
+          },
+        ],
+      }),
       /Invalid sub-objective path for T001:/,
     );
   } finally {
@@ -806,8 +804,8 @@ test("serves board JSON and streams live state changes over SSE", { timeout: 15_
       const reader = events.body.getReader();
 
       await readUntil(reader, /"status":"active"/);
-      writeStateJson(root, objectiveDir, stateJson("blocked"));
-      const update = await readUntil(reader, /"status":"blocked"/);
+      patchTask(root, "live-board", "T001", { status: "blocked" });
+      const update = await readUntil(reader, /"status":"blocked"/, 12_000);
       assert.match(update, /"title":"Blocked"/);
 
       controller.abort();

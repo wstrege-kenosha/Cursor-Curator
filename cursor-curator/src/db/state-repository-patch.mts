@@ -15,7 +15,7 @@ import type { ObjectivePatchFields } from "./state-objective-patch.mjs";
 import {
   replaceSubobjectiveLinks,
 } from "./state-subobjective-links.mjs";
-import { getDb } from "./state-repository-read.mjs";
+import { getDb } from "./state-repository-db.mjs";
 import { loadStateV3 } from "./state-repository-read.mjs";
 import type { ApplyReceiptOptions, PatchTaskInput } from "./state-repository-types.mjs";
 
