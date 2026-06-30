@@ -13,7 +13,9 @@ import {
   patchTask,
   registerObjective,
   saveStateV3,
+  applyReceipt,
 } from "./state-repository.mjs";
+import { findObjectiveSlugByDirPath } from "./state-repository-read.mjs";
 import { loadState } from "../state/objective-state.mjs";
 import { removeWorkspaceDir } from "./test-helpers.mjs";
 
@@ -184,4 +186,53 @@ test("saveStateV3 preserves parent subobjective links when child objective is up
   } finally {
     removeWorkspaceDir(workspace);
   }
+});
+
+test("findObjectiveSlugByDirPath resolves mixed separators and case via normalized index", () => {
+  const workspace = mkdtempSync(join(tmpdir(), "curator-dir-lookup-"));
+  const slug = "dir-lookup-test";
+  const dirPath = join(workspace, "docs", "objectives", slug);
+  mkdirSync(join(dirPath, "notes"), { recursive: true });
+  try {
+    resetDatabaseCache();
+    registerObjective(workspace, slug);
+
+    assert.equal(findObjectiveSlugByDirPath(workspace, dirPath), slug);
+
+    const mixedCase = join(workspace, "DOCS", "OBJECTIVES", slug.toUpperCase());
+    assert.equal(findObjectiveSlugByDirPath(workspace, mixedCase), slug);
+
+    const forwardSlashes = dirPath.replace(/\\/g, "/");
+    assert.equal(findObjectiveSlugByDirPath(workspace, forwardSlashes), slug);
+
+    const backslashes = dirPath.replace(/\//g, "\\");
+    assert.equal(findObjectiveSlugByDirPath(workspace, backslashes), slug);
+  } finally {
+    removeWorkspaceDir(workspace);
+  }
+});
+
+test("applyReceipt surgically updates task status and advances active_task", () => {
+  resetDatabaseCache();
+  importObjectiveFixture(repoRoot, "runner-fixture");
+  const before = loadState("runner-fixture", repoRoot);
+  const taskCountBefore = before.state.tasks.length;
+
+  const result = applyReceipt(repoRoot, "runner-fixture", {
+    cursor_curator_receipt_v1: {
+      task_id: "T001",
+      board_path: "db:runner-fixture",
+      result: "done",
+      summary: "Mapped verification commands for runner fixture.",
+      evidence: ["package.json"],
+    },
+  }, { role: "scout" });
+
+  assert.equal(result.ok, true, result.errors.join("; "));
+  const after = loadState("runner-fixture", repoRoot);
+  assert.equal(after.state.tasks.length, taskCountBefore);
+  assert.equal(after.state.tasks.find((entry) => entry.id === "T001")?.status, "done");
+  assert.equal(after.state.active_task, "T002");
+  assert.equal(after.state.tasks.find((entry) => entry.id === "T002")?.status, "active");
+  assert.ok(after.state.tasks.find((entry) => entry.id === "T001")?.receipt);
 });

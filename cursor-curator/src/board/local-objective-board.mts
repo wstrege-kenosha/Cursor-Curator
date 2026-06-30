@@ -1,53 +1,29 @@
 #!/usr/bin/env bun
-// @ts-nocheck — follow-up: split per decomposition plan below
-/**
- * Decomposition plan (keep this file under ~400 lines):
- * - board-server.mts — HTTP listen, static file serving, SSE/live refresh
- * - board-hub-register.mts — hub registration and port metadata
- * - board-settings.mts — localStorage-backed settings parse/persist
- * - board-watchers.mts — db/notes file watchers
- * Keep this module as CLI entry + wiring only.
- */
-import { createServer } from "node:http";
-import { existsSync, mkdirSync, readFileSync, realpathSync, watch, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { realpathSync } from "node:fs";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createBoardPayload, writeBoardApp } from "./objective-board.mjs";
-import { buildHubPayloadForServer, hubPageHtml } from "../hub/objective-hub.mjs";
+import {
+  DEFAULT_BIND_HOST,
+  DEFAULT_PORT,
+  DEFAULT_PUBLIC_HOST,
+  registerWithBoardHub,
+  startBoardServer,
+} from "./board-server.mjs";
 import { resolveStatePath } from "../state/objective-state.mjs";
-import { closeDatabase, resolveDbPath } from "../db/connection.mjs";
-import { resolveWorkspaceForObjective } from "../mcp/path-utils.mjs";
 
-const textTypes = {
-  ".html": "text/html; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".svg": "image/svg+xml; charset=utf-8",
-  ".png": "image/png",
-};
-
-const SETTINGS_VERSION = 2;
-const SETTINGS_DEFAULTS = {
-  density: "comfortable",
-  completedVisibility: "show",
-  boardOpenBehavior: "last",
-  motion: "system",
-  lastBoardPath: "",
-};
-const SETTINGS_OPTIONS = {
-  density: new Set(["comfortable", "compact"]),
-  completedVisibility: new Set(["show", "collapse"]),
-  boardOpenBehavior: new Set(["last", "newest"]),
-  motion: new Set(["system", "reduce", "allow"]),
-};
-const DEFAULT_BIND_HOST = "127.0.0.1";
-const DEFAULT_PUBLIC_HOST = "curator.localhost";
-const DEFAULT_PORT = 41737;
+export { readBoardSettings, writeBoardSettings, normalizeSettings } from "./board-settings.mjs";
+export {
+  DEFAULT_BIND_HOST,
+  DEFAULT_PORT,
+  DEFAULT_PUBLIC_HOST,
+  registerWithBoardHub,
+  startBoardServer,
+} from "./board-server.mjs";
 
 if (isDirectRun()) {
   main().catch((error) => {
-    console.error(error.message);
+    console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   });
 }
@@ -85,7 +61,8 @@ export async function main() {
       port: options.port,
     });
   } catch (error) {
-    if (error.code !== "EADDRINUSE") throw error;
+    const err = error as NodeJS.ErrnoException;
+    if (err.code !== "EADDRINUSE") throw error;
     server = await registerWithBoardHub({
       objectiveDir,
       host: options.host,
@@ -94,14 +71,21 @@ export async function main() {
   }
 
   if (options.json) {
-    console.log(JSON.stringify({ objectiveDir, appDir: server.appDir || appDir, url: server.url, hubUrl: server.hubUrl, apiUrl: server.apiUrl, registered: Boolean(server.registered) }, null, 2));
+    console.log(JSON.stringify({
+      objectiveDir,
+      appDir: server.appDir || appDir,
+      url: server.url,
+      hubUrl: server.hubUrl,
+      apiUrl: server.apiUrl,
+      registered: Boolean(server.registered),
+    }, null, 2));
   } else {
     console.log(`Cursor Curator local board: ${server.url}`);
     console.log(`Cursor Curator local hub: ${server.hubUrl}`);
     if (server.registered) {
       console.log("Registered with the existing Cursor Curator local board hub.");
     } else {
-      console.log(`Watching: ${resolveDbPath(resolveWorkspaceForObjective(objectiveDir))} and notes/`);
+      console.log(`Watching objective at ${objectiveDir}`);
       console.log("Press Ctrl-C to stop.");
     }
   }
@@ -109,7 +93,7 @@ export async function main() {
   return server;
 }
 
-export function parseArgs(args) {
+export function parseArgs(args: string[]) {
   const options = {
     objective: "",
     host: DEFAULT_BIND_HOST,
@@ -152,520 +136,6 @@ export function parseArgs(args) {
   }
 
   return options;
-}
-
-export async function startBoardServer(options = {}) {
-  const {
-    objectiveDir,
-    appDir = "",
-    host = DEFAULT_BIND_HOST,
-    publicHost = Object.hasOwn(options, "host") ? host : DEFAULT_PUBLIC_HOST,
-    port = DEFAULT_PORT,
-  } = options;
-  const boards = new Map();
-  let baseUrl = "";
-  let initialBoard = null;
-
-  const addBoard = (candidateGoalDir, candidateAppDir = "") => {
-    const root = resolve(candidateGoalDir);
-    try {
-      resolveStatePath(root);
-    } catch {
-      throw new Error(`Objective not in database for ${root} (run: bun cursor-curator/dist/cli/curator.mjs db import)`);
-    }
-
-    const existing = [...boards.values()].find((board) => board.root === root);
-    if (existing) {
-      existing.appDir = candidateAppDir || writeBoardApp(root);
-      existing.lastPayload = safePayload(root);
-      return boardSummary(existing, baseUrl);
-    }
-
-    const payload = safePayload(root);
-    const board = {
-      root,
-      appDir: candidateAppDir || writeBoardApp(root),
-      boardPath: nextBoardPath(root, payload, boards),
-      clients: new Set(),
-      lastPayload: payload,
-      watcher: null,
-      startedAt: new Date().toISOString(),
-    };
-    board.watcher = watchObjective(root, () => {
-      closeDatabase(resolveWorkspaceForObjective(root));
-      board.lastPayload = safePayload(root);
-      for (const client of board.clients) sendEvent(client, board.lastPayload);
-      board.watcher.refresh();
-    });
-    boards.set(board.boardPath, board);
-    return boardSummary(board, baseUrl);
-  };
-
-  const server = createServer(async (request, response) => {
-    try {
-      const url = new URL(request.url || "/", `http://${request.headers.host || "127.0.0.1"}`);
-      if (request.method === "POST" && url.pathname === "/api/boards") {
-        const payload = await readJsonRequest(request);
-        sendJson(response, addBoard(payload.objectiveDir || ""));
-        return;
-      }
-      if (url.pathname === "/open") {
-        redirectToFirstBoard(response, boards, baseUrl, readBoardSettings());
-        return;
-      }
-      if (url.pathname === "/" || url.pathname === "/hub") {
-        await sendHubPage(response, baseUrl, boards);
-        return;
-      }
-      if (url.pathname === "/api/hub") {
-        sendJson(response, buildHubPayloadForServer([...boards.values()].map((board) => board.root), {
-          roots: [process.cwd()],
-          baseUrl,
-        }));
-        return;
-      }
-      if (url.pathname === "/boards") {
-        await sendHubPage(response, baseUrl, boards);
-        return;
-      }
-      if (url.pathname === "/api/boards") {
-        sendJson(response, { boards: [...boards.values()].map((board) => boardSummary(board, baseUrl)) });
-        return;
-      }
-      if (url.pathname === "/api/settings") {
-        if (request.method === "GET") {
-          sendJson(response, { version: SETTINGS_VERSION, settings: readBoardSettings() });
-          return;
-        }
-        if (request.method === "PUT") {
-          const payload = await readJsonRequest(request);
-          sendJson(response, { version: SETTINGS_VERSION, settings: writeBoardSettings(payload.settings || payload) });
-          return;
-        }
-        response.writeHead(405, { "Allow": "GET, PUT" });
-        response.end("Method not allowed");
-        return;
-      }
-
-      const slashUrl = boardTrailingSlashUrl(url.pathname, boards, baseUrl);
-      if (slashUrl) {
-        redirect(response, slashUrl);
-        return;
-      }
-
-      const route = routeBoardRequest(url.pathname, boards, initialBoard);
-      if (!route.board) {
-        sendUnregisteredBoardPath(response, url.pathname, boards, baseUrl);
-        return;
-      }
-      if (route.pathname === "/api/board") {
-        sendJson(response, safePayload(route.board.root));
-        return;
-      }
-      if (route.pathname === "/events") {
-        response.writeHead(200, {
-          "Content-Type": "text/event-stream; charset=utf-8",
-          "Cache-Control": "no-cache, no-transform",
-          "Connection": "keep-alive",
-          "X-Accel-Buffering": "no",
-        });
-        response.write("retry: 1000\n\n");
-        route.board.clients.add(response);
-        sendEvent(response, route.board.lastPayload);
-        request.on("close", () => route.board.clients.delete(response));
-        return;
-      }
-
-      if (route.pathname === "/" || route.pathname === "/index.html" || route.pathname === "/app.js" || route.pathname === "/styles.css") {
-        route.board.appDir = writeBoardApp(route.board.root);
-        route.board.lastPayload = safePayload(route.board.root);
-      }
-
-      serveStatic(route.board.appDir, route.pathname, response);
-    } catch (error) {
-      sendError(response, error);
-    }
-  });
-
-  await new Promise((resolveListen, rejectListen) => {
-    server.once("error", rejectListen);
-    server.listen(port, host, () => {
-      server.off("error", rejectListen);
-      resolveListen();
-    });
-  });
-
-  const address = server.address();
-  const actualPort = typeof address === "object" && address ? address.port : port;
-  baseUrl = `http://${publicHost || host}:${actualPort}`;
-  const initialSummary = addBoard(objectiveDir, appDir);
-  initialBoard = boards.get(new URL(initialSummary.url).pathname);
-
-  return {
-    ...initialSummary,
-    close: () => new Promise((resolveClose, rejectClose) => {
-      const workspaceRoots = new Set(
-        [...boards.values()].map((board) => resolveWorkspaceForObjective(board.root)),
-      );
-      for (const board of boards.values()) {
-        board.watcher.close();
-        for (const client of board.clients) client.end();
-      }
-      server.close((error) => {
-        for (const workspaceRoot of workspaceRoots) {
-          closeDatabase(workspaceRoot);
-        }
-        if (error) rejectClose(error);
-        else resolveClose();
-      });
-    }),
-  };
-}
-
-async function registerWithBoardHub({ objectiveDir, host, port }) {
-  const response = await fetch(`http://${host}:${port}/api/boards`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ objectiveDir }),
-  });
-  if (!response.ok) {
-    const message = await response.text();
-    if (response.status === 404) {
-      throw new Error(`Port ${port} is already in use, but it is not the Cursor Curator multi-board hub. Stop the existing local board process on ${host}:${port}, then retry.`);
-    }
-    throw new Error(`Cursor Curator local board hub rejected ${objectiveDir}: ${message}`);
-  }
-  return { ...(await response.json()), registered: true };
-}
-
-function sendHubPage(response, baseUrl, boards) {
-  if (response.headersSent) return;
-  try {
-    const payload = buildHubPayloadForServer([...boards.values()].map((board) => board.root), {
-      roots: [process.cwd()],
-      baseUrl,
-    });
-    response.writeHead(200, {
-      "Content-Type": "text/html; charset=utf-8",
-      "Cache-Control": "no-store",
-    });
-    response.end(hubPageHtml(payload));
-  } catch (error) {
-    sendError(response, error);
-  }
-}
-
-function redirectToFirstBoard(response, boards, baseUrl, settings = {}) {
-  const board = preferredBoard(boards, settings);
-  if (!board) {
-    response.writeHead(404, {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Cache-Control": "no-store",
-    });
-    response.end("No Cursor Curator boards are registered.");
-    return;
-  }
-
-  redirect(response, `${baseUrl}${board.boardPath}`);
-}
-
-function preferredBoard(boards, settings = {}) {
-  const allBoards = [...boards.values()];
-  if (allBoards.length === 0) return null;
-  const normalized = normalizeSettings(settings);
-  if (normalized.boardOpenBehavior === "last" && normalized.lastBoardPath) {
-    const remembered = allBoards.find((board) => board.boardPath === normalized.lastBoardPath);
-    if (remembered) return remembered;
-  }
-  if (normalized.boardOpenBehavior === "newest") {
-    return allBoards
-      .slice()
-      .sort((left, right) => right.startedAt.localeCompare(left.startedAt))[0];
-  }
-  return allBoards[0];
-}
-
-function boardTrailingSlashUrl(pathname, boards, baseUrl) {
-  for (const board of boards.values()) {
-    const prefix = board.boardPath.endsWith("/") ? board.boardPath.slice(0, -1) : board.boardPath;
-    if (pathname === prefix) return `${baseUrl}${board.boardPath}`;
-  }
-  return "";
-}
-
-function redirect(response, location) {
-  if (response.headersSent) return;
-  response.writeHead(302, {
-    "Location": location,
-    "Cache-Control": "no-store",
-  });
-  response.end();
-}
-
-function boardPathFor(objectiveDir, payload) {
-  const slug = slugifyPathSegment(payload?.objective?.slug || basename(objectiveDir));
-  return `/${slug || "objective"}/`;
-}
-
-function nextBoardPath(objectiveDir, payload, boards) {
-  const existing = [...boards.values()].find((board) => board.root === objectiveDir);
-  if (existing) return existing.boardPath;
-
-  const basePath = boardPathFor(objectiveDir, payload);
-  if (!boards.has(basePath)) return basePath;
-
-  const prefix = basePath.slice(0, -1);
-  for (let index = 2; index < 1000; index += 1) {
-    const candidate = `${prefix}-${index}/`;
-    if (!boards.has(candidate)) return candidate;
-  }
-  throw new Error(`Could not allocate a board path for ${objectiveDir}`);
-}
-
-function boardSummary(board, baseUrl) {
-  const slug = slugifyPathSegment(board.lastPayload.objective?.slug || basename(board.root)) || "objective";
-  return {
-    objectiveDir: board.root,
-    appDir: board.appDir,
-    title: board.lastPayload.objective?.title || basename(board.root),
-    slug,
-    url: `${baseUrl}${board.boardPath}`,
-    hubUrl: `${baseUrl}/`,
-    indexUrl: `${baseUrl}/`,
-    apiUrl: `${baseUrl}/api/boards`,
-    startedAt: board.startedAt,
-  };
-}
-
-function slugifyPathSegment(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function routeBoardRequest(pathname, boards, initialBoard) {
-  if ((pathname === "/api/board" || pathname === "/events") && initialBoard) {
-    return { board: initialBoard, pathname };
-  }
-
-  const matches = [...boards.values()]
-    .map((board) => ({ board, pathname: stripBoardPathPrefix(pathname, board.boardPath) }))
-    .filter((route) => route.pathname !== pathname || pathname === route.board.boardPath.slice(0, -1))
-    .sort((left, right) => right.board.boardPath.length - left.board.boardPath.length);
-
-  return matches[0] || { board: null, pathname };
-}
-
-function sendUnregisteredBoardPath(response, pathname, boards, baseUrl) {
-  if (response.headersSent) return;
-  response.writeHead(404, {
-    "Content-Type": "text/plain; charset=utf-8",
-    "Cache-Control": "no-store",
-  });
-  const registeredBoards = [...boards.values()].map((board) => {
-    const summary = boardSummary(board, baseUrl);
-    return `- ${summary.title}: ${summary.url}`;
-  });
-  response.end([
-    `Cursor Curator board path is not registered in this local hub: ${pathname}`,
-    "",
-    "This server is the Cursor Curator multi-board hub. Do not stop it just because a /<slug>/ board URL returned 404.",
-    "Start or rerun `bun cursor-curator/dist/cli/curator.mjs board <objective-dir>` to register that objective on this same port, then open the printed /<slug>/ URL.",
-    "",
-    "Registered boards:",
-    registeredBoards.length ? registeredBoards.join("\n") : "- none",
-    "",
-    `Hub API: ${baseUrl}/api/boards`,
-  ].join("\n"));
-}
-
-function stripBoardPathPrefix(pathname, boardPath) {
-  const prefix = boardPath.endsWith("/") ? boardPath.slice(0, -1) : boardPath;
-  if (pathname === prefix) return "/";
-  if (pathname.startsWith(`${prefix}/`)) {
-    return pathname.slice(prefix.length) || "/";
-  }
-  return pathname;
-}
-
-async function readJsonRequest(request) {
-  let body = "";
-  for await (const chunk of request) {
-    body += chunk;
-    if (body.length > 1_000_000) throw new Error("Request body is too large.");
-  }
-  return JSON.parse(body || "{}");
-}
-
-function watchObjective(objectiveDir, onChange) {
-  const watchers = [];
-  const schedule = debounce(onChange, 80);
-  let watchedDirs = new Set();
-  const workspaceRoot = resolveWorkspaceForObjective(objectiveDir);
-  const dbDir = dirname(resolveDbPath(workspaceRoot));
-
-  const rebuild = () => {
-    for (const watcher of watchers.splice(0)) watcher.close();
-    watchedDirs = objectiveDirsForPayload(objectiveDir);
-    if (existsSync(dbDir)) {
-      watchers.push(watch(dbDir, { persistent: true }, () => schedule()));
-      for (const dbFile of ["curator.db", "curator.db-wal", "curator.db-shm"]) {
-        const dbPath = join(dbDir, dbFile);
-        if (existsSync(dbPath)) {
-          watchers.push(watch(dbPath, { persistent: true }, schedule));
-        }
-      }
-    }
-    for (const dir of watchedDirs) {
-      const notesDir = join(dir, "notes");
-      if (existsSync(notesDir)) watchers.push(watch(notesDir, { persistent: true }, schedule));
-    }
-  };
-
-  rebuild();
-  return {
-    close() {
-      for (const watcher of watchers) watcher.close();
-    },
-    refresh() {
-      const next = objectiveDirsForPayload(objectiveDir);
-      if (!sameSet(watchedDirs, next)) rebuild();
-    },
-  };
-}
-
-function safePayload(objectiveDir) {
-  try {
-    return createBoardPayload(objectiveDir);
-  } catch (error) {
-    return {
-      generatedAt: new Date().toISOString(),
-      error: error.message,
-      objective: { title: "Cursor Curator Board", slug: "", status: "error", activeTask: "", tranche: "" },
-      columns: [
-        { id: "todo", title: "Todo", description: "Queued work ready to pull", tasks: [] },
-        { id: "in-progress", title: "In Progress", description: "The active task", tasks: [] },
-        { id: "blocked", title: "Blocked", description: "Needs unblock or a smaller slice", tasks: [] },
-        { id: "completed", title: "Completed", description: "Receipted work", tasks: [] },
-      ],
-      tasks: [],
-      notes: [],
-    };
-  }
-}
-
-function objectiveDirsForPayload(objectiveDir) {
-  const dirs = new Set([resolve(objectiveDir)]);
-  try {
-    collectPayloadObjectiveDirs(createBoardPayload(objectiveDir), dirs);
-  } catch {
-    // Keep watching the parent when the board is temporarily invalid.
-  }
-  return dirs;
-}
-
-function collectPayloadObjectiveDirs(payload, dirs) {
-  if (payload?.source?.objectiveDir) dirs.add(resolve(payload.source.objectiveDir));
-  for (const task of payload?.tasks || []) {
-    if (task.subobjective?.board) collectPayloadObjectiveDirs(task.subobjective.board, dirs);
-  }
-}
-
-function sameSet(left, right) {
-  if (left.size !== right.size) return false;
-  for (const value of left) {
-    if (!right.has(value)) return false;
-  }
-  return true;
-}
-
-function sendJson(response, payload) {
-  if (response.headersSent) return;
-  response.writeHead(200, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
-  });
-  response.end(JSON.stringify(payload, null, 2));
-}
-
-function sendError(response, error) {
-  if (response.headersSent) return;
-  response.writeHead(400, {
-    "Content-Type": "text/plain; charset=utf-8",
-    "Cache-Control": "no-store",
-  });
-  response.end(error.message || "Request failed");
-}
-
-function sendEvent(response, payload) {
-  response.write(`event: board\ndata: ${JSON.stringify(payload)}\n\n`);
-}
-
-function serveStatic(appDir, pathname, response) {
-  if (response.headersSent) return;
-  const cleanPath = pathname === "/" ? "/index.html" : pathname;
-  if (!/^\/[A-Za-z0-9_.-]+$/.test(cleanPath)) {
-    response.writeHead(404);
-    response.end("Not found");
-    return;
-  }
-
-  const file = join(appDir, cleanPath.slice(1));
-  if (!existsSync(file)) {
-    response.writeHead(404);
-    response.end("Not found");
-    return;
-  }
-
-  const fileExtension = cleanPath.match(/\.[^.]+$/)?.[0] || "";
-  response.writeHead(200, {
-    "Content-Type": textTypes[fileExtension] || "application/octet-stream",
-    "Cache-Control": "no-store",
-  });
-  response.end(readFileSync(file));
-}
-
-function debounce(fn, delay) {
-  let timer = null;
-  return () => {
-    clearTimeout(timer);
-    timer = setTimeout(fn, delay);
-  };
-}
-
-function readBoardSettings() {
-  try {
-    if (!existsSync(settingsPath())) return { ...SETTINGS_DEFAULTS };
-    return normalizeSettings(JSON.parse(readFileSync(settingsPath(), "utf8")));
-  } catch {
-    return { ...SETTINGS_DEFAULTS };
-  }
-}
-
-function writeBoardSettings(settings) {
-  const normalized = normalizeSettings(settings);
-  const path = settingsPath();
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(normalized, null, 2)}\n`);
-  return normalized;
-}
-
-function normalizeSettings(settings) {
-  const normalized = { ...SETTINGS_DEFAULTS };
-  if (!settings || typeof settings !== "object" || Array.isArray(settings)) return normalized;
-  for (const [key, allowed] of Object.entries(SETTINGS_OPTIONS)) {
-    if (allowed.has(settings[key])) normalized[key] = settings[key];
-  }
-  if (typeof settings.lastBoardPath === "string" && /^\/[a-z0-9][a-z0-9-]*\/$/.test(settings.lastBoardPath)) {
-    normalized.lastBoardPath = settings.lastBoardPath;
-  }
-  return normalized;
-}
-
-function settingsPath() {
-  return process.env.CURATOR_LOCAL_BOARD_SETTINGS_PATH || join(homedir(), ".cursor-curator", "local-board-settings.json");
 }
 
 function usage() {

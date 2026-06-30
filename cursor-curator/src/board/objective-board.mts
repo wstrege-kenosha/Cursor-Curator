@@ -2,6 +2,8 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSyn
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { StateV3 } from "../schema/state-v3.js";
+import type { TaskMetricsDetail } from "../usage/usage-present.mjs";
+import type { TaskUsage } from "../usage/objective-usage.mjs";
 import { readBoardRepoLinks } from "./port-metadata.mjs";
 import { checkCompletionReadiness } from "../completion/objective-completion.mjs";
 import { readLastVerificationFromLoadedState } from "../verify/objective-verify.mjs";
@@ -14,28 +16,29 @@ import {
 import { readUsageSummaryForObjective } from "../usage/objective-usage.mjs";
 import { loadState, resolveStatePath, type LoadStateResult } from "../state/objective-state.mjs";
 import { validateObjectiveStateFile } from "../mcp/validate-state-bridge.mjs";
-import { listObjectives, objectiveExistsInDb, resolveChildObjectiveSlug } from "../db/state-repository.mjs";
+import { listObjectives, objectiveExistsInDb } from "../db/state-repository.mjs";
 import { resolveWorkspaceForObjective } from "../mcp/path-utils.mjs";
-import {
-  childDirSegmentOrSlug,
-  resolveChildObjectiveDir,
-} from "../subobjective/subobjective-path.mjs";
+import { resolveChildObjectiveInWorkspace } from "../subobjective/subobjective-resolve.mjs";
+import type { BoardPayload } from "./board-payload-types.mjs";
 import {
   ObjectiveBoardError,
   buildColumns,
   normalizeObjectiveBoard,
+  type NormalizedBoardTask,
 } from "./objective-board-model.mjs";
 import { boardCss } from "./objective-board-styles.mjs";
 import { boardHtml } from "./objective-board-html.mjs";
 import { boardJs } from "./objective-board-client.mjs";
 
 export { readBoardRepoLinks } from "./port-metadata.mjs";
+export type { BoardPayload, BoardPayloadObjective } from "./board-payload-types.mjs";
 export {
   ObjectiveBoardError,
   buildColumns,
   normalizeObjectiveBoard,
   normalizeTask,
   parseObjectiveStateText,
+  type NormalizedBoardTask,
 } from "./objective-board-model.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -55,22 +58,12 @@ interface NoteEntry {
 
 type NoteIndex = Record<string, NoteEntry>;
 
-type BoardTask = {
-  id: string;
-  status: string;
-  objective: string;
-  assignee: string;
-  type: string;
-  verify?: string[];
-  receipt: { note?: string };
-  subobjective?: {
-    path?: string;
-    depth?: number;
-    board?: unknown;
-    [key: string]: unknown;
-  };
+type EnrichedBoardTask = NormalizedBoardTask & {
   note?: NoteEntry | null;
-  [key: string]: unknown;
+  metrics?: TaskUsage | null;
+  metrics_badge?: string;
+  metrics_detail?: TaskMetricsDetail | null;
+  subobjective?: (NormalizedBoardTask["subobjective"] & { board?: unknown }) | null;
 };
 
 function objectiveUpdatedAtMs(workspaceRoot: string, slug: string): number {
@@ -106,7 +99,7 @@ export async function loadObjectiveBoard(objectiveDir: string) {
   return normalizeObjectiveBoard(loaded.state, root);
 }
 
-export function createBoardPayload(objectiveDir: string, options: CreateBoardPayloadOptions = {}) {
+export function createBoardPayload(objectiveDir: string, options: CreateBoardPayloadOptions = {}): BoardPayload {
   const includeSubobjectives = options.includeSubobjectives !== false;
   const root = resolve(objectiveDir);
   const { statePath, loaded, workspaceRoot } = readObjectiveStateAtRoot(root);
@@ -116,13 +109,16 @@ export function createBoardPayload(objectiveDir: string, options: CreateBoardPay
   const noteIndex = loadNotes(root);
   const usageSummary = readUsageSummaryForObjective(root, {
     include_subobjectives: includeSubobjectives,
-    tasks: board.tasks,
+    tasks: board.tasks.map((task) => ({
+      id: task.id,
+      subobjective: task.subobjective?.path ? { path: task.subobjective.path } : undefined,
+    })),
   });
   const usage = buildUsageBoardView(usageSummary);
-  const tasks = board.tasks
-    .map((task: BoardTask) => attachTaskNote(task, noteIndex))
-    .map((task: BoardTask) => (includeSubobjectives ? attachTaskSubobjective(task, root, workspaceRoot) : task))
-    .map((task: BoardTask) => {
+  const tasks = (board.tasks as NormalizedBoardTask[])
+    .map((task) => attachTaskNote(task, noteIndex))
+    .map((task) => (includeSubobjectives ? attachTaskSubobjective(task, root, workspaceRoot) : task))
+    .map((task) => {
       const childPath = task.subobjective?.path;
       const metricsView = childPath && includeSubobjectives
         ? buildTaskMetricsWithRollup(task.id, usageSummary, childPath)
@@ -139,15 +135,13 @@ export function createBoardPayload(objectiveDir: string, options: CreateBoardPay
   const repo = readBoardRepoLinks();
   const validation = validateObjectiveStateFile(root, workspaceRoot);
   const completion = checkCompletionReadiness(root, workspaceRoot);
-  const lastVerification = readLastVerificationFromLoadedState(
-    document as Parameters<typeof readLastVerificationFromLoadedState>[0],
-  );
+  const lastVerification = readLastVerificationFromLoadedState(document);
   const sessionDigest = readSessionDigest(root, { limit: 3 });
-  const activeTaskRow = tasks.find((task: BoardTask) => task.id === board.activeTask) || null;
-  const doneCount = tasks.filter((task: BoardTask) => task.status === "done").length;
-  const blockedCount = tasks.filter((task: BoardTask) => task.status === "blocked").length;
-  const queuedCount = tasks.filter((task: BoardTask) => task.status === "queued").length;
-  const activeCount = tasks.filter((task: BoardTask) => task.status === "active").length;
+  const activeTaskRow = tasks.find((task) => task.id === board.activeTask) || null;
+  const doneCount = tasks.filter((task) => task.status === "done").length;
+  const blockedCount = tasks.filter((task) => task.status === "blocked").length;
+  const queuedCount = tasks.filter((task) => task.status === "queued").length;
+  const activeCount = tasks.filter((task) => task.status === "active").length;
   const progressPct = tasks.length ? Math.round((doneCount / tasks.length) * 100) : 0;
 
   return {
@@ -230,7 +224,7 @@ export function writeBoardApp(objectiveDir: string) {
   return appDir;
 }
 
-function attachTaskNote(task: BoardTask, noteIndex: NoteIndex): BoardTask {
+function attachTaskNote(task: NormalizedBoardTask, noteIndex: NoteIndex): EnrichedBoardTask {
   const notePath = task.receipt.note || "";
   if (!notePath) return task;
   const normalized = notePath.replaceAll("\\", "/").replace(/^\.?\//, "");
@@ -241,24 +235,18 @@ function attachTaskNote(task: BoardTask, noteIndex: NoteIndex): BoardTask {
 }
 
 function attachTaskSubobjective(
-  task: BoardTask,
+  task: EnrichedBoardTask,
   objectiveDir: string,
   workspaceRoot: string,
-): BoardTask {
+): EnrichedBoardTask {
   if (!task.subobjective?.path) return task;
   const childRelative = task.subobjective.path;
-  const childDirSegment = childDirSegmentOrSlug(childRelative);
-  const childSlug =
-    resolveChildObjectiveSlug(workspaceRoot, objectiveDir, childRelative)
-    ?? childDirSegment;
-  if (!childSlug || !childDirSegment) {
+  const resolved = resolveChildObjectiveInWorkspace(workspaceRoot, objectiveDir, childRelative);
+  if (!resolved) {
     throw new ObjectiveBoardError(`Invalid sub-objective path for ${task.id}: ${childRelative}`);
   }
-  const childGoalDir = resolveChildObjectiveDir(objectiveDir, childRelative);
-  if (!childGoalDir) {
-    throw new ObjectiveBoardError(`Invalid sub-objective path for ${task.id}: ${childRelative}`);
-  }
-  validateChildSubobjectivePath(task, objectiveDir, childRelative, childDirSegment);
+  const { slug: childSlug, dirPath: childObjectiveDir, normalizedPath } = resolved;
+  validateChildSubobjectivePath(task, objectiveDir, childRelative, resolved.segment);
   if (!objectiveExistsInDb(workspaceRoot, childSlug)) {
     throw new ObjectiveBoardError(`Missing sub-objective state for ${task.id}: ${childRelative}`);
   }
@@ -267,14 +255,14 @@ function attachTaskSubobjective(
     ...task,
     subobjective: {
       ...task.subobjective,
-      path: `subobjectives/${childDirSegment}`,
-      board: createBoardPayload(childGoalDir, { includeSubobjectives: false }),
+      path: normalizedPath,
+      board: createBoardPayload(childObjectiveDir, { includeSubobjectives: false }),
     },
   };
 }
 
 function validateChildSubobjectivePath(
-  task: BoardTask,
+  task: EnrichedBoardTask,
   objectiveDir: string,
   childRelative: string,
   childSlug: string,

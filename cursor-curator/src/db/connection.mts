@@ -3,10 +3,13 @@ import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { INITIAL_MIGRATION_SQL } from "./migrations/001_initial.mjs";
 import { USAGE_MIGRATION_SQL } from "./migrations/002_usage.mjs";
+import { DIR_PATH_NORMALIZED_MIGRATION_SQL } from "./migrations/003_dir_path_normalized.mjs";
+import { backfillDirPathNormalized } from "./dir-path-backfill.mjs";
 
 const MIGRATIONS = [
   { version: 1, sql: INITIAL_MIGRATION_SQL },
   { version: 2, sql: USAGE_MIGRATION_SQL },
+  { version: 3, sql: DIR_PATH_NORMALIZED_MIGRATION_SQL },
 ] as const;
 const MIGRATION_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 
@@ -48,18 +51,18 @@ function currentMigrationVersion(db: Database): number {
 }
 
 function runMigrations(db: Database): void {
-  if (currentMigrationVersion(db) >= MIGRATION_VERSION) {
-    return;
-  }
-  withTransaction(db, () => {
-    for (const migration of MIGRATIONS) {
-      if (currentMigrationVersion(db) >= migration.version) {
-        continue;
+  if (currentMigrationVersion(db) < MIGRATION_VERSION) {
+    withTransaction(db, () => {
+      for (const migration of MIGRATIONS) {
+        if (currentMigrationVersion(db) >= migration.version) {
+          continue;
+        }
+        db.exec(migration.sql);
+        db.query("INSERT INTO schema_migrations (version) VALUES (?)").run(migration.version);
       }
-      db.exec(migration.sql);
-      db.query("INSERT INTO schema_migrations (version) VALUES (?)").run(migration.version);
-    }
-  });
+    });
+  }
+  backfillDirPathNormalized(db);
 }
 
 export function openDatabase(

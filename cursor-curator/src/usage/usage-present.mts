@@ -4,7 +4,8 @@ import type {
   UsageCounters,
   UsageSummary,
   UsageSummaryWithChildren,
-} from "./objective-usage.mjs";
+} from "./usage-types.mjs";
+import { usageNum } from "./usage-types.mjs";
 import { normalizeSubobjectivePath } from "../subobjective/subobjective-path.mjs";
 
 export interface TaskMetricsDetail {
@@ -23,11 +24,6 @@ export interface TaskMetricsView {
   detail: TaskMetricsDetail | null;
 }
 
-function num(value: unknown): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
-}
-
 export function usageRollupVisible(rollup: UsageCounters): boolean {
   return rollup.session_count > 0
     || rollup.duration_ms > 0
@@ -36,7 +32,7 @@ export function usageRollupVisible(rollup: UsageCounters): boolean {
 }
 
 export function formatTokenCount(value: number): string {
-  const n = num(value);
+  const n = usageNum(value);
   if (n >= 1_000_000) {
     return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
   }
@@ -47,7 +43,7 @@ export function formatTokenCount(value: number): string {
 }
 
 export function formatDuration(durationMs: number): string {
-  const ms = num(durationMs);
+  const ms = usageNum(durationMs);
   if (ms < 60_000) {
     return `${Math.max(1, Math.round(ms / 1000))}s`;
   }

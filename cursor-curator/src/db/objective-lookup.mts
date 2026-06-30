@@ -17,10 +17,13 @@ export function objectiveRowByDirPath(
   dirPath: string,
 ): ObjectiveIdSlugRow | null {
   const normalized = normalizeStoredDirPath(dirPath);
-  const rows = db
-    .query<ObjectiveIdSlugRow, [number]>(
-      "SELECT id, slug, dir_path FROM objectives WHERE workspace_id = ?",
+  const byIndex = db
+    .query<ObjectiveIdSlugRow, [number, string]>(
+      "SELECT id, slug, dir_path FROM objectives WHERE workspace_id = ? AND dir_path_normalized = ?",
     )
-    .all(workspaceId);
-  return rows.find((row) => normalizeStoredDirPath(row.dir_path) === normalized) ?? null;
+    .get(workspaceId, normalized);
+  if (byIndex) {
+    return byIndex;
+  }
+  return null;
 }

@@ -1,6 +1,6 @@
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, basename } from "node:path";
@@ -17,7 +17,19 @@ import { parseArgs, startBoardServer } from "../../../dist/board/local-objective
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "../../../..");
-const examplesRoot = join(repoRoot, "cursor-curator/surfaces/local-objective-board/examples");
+const packageRoot = join(repoRoot, "cursor-curator");
+const examplesRoot = join(packageRoot, "surfaces/local-objective-board/examples");
+
+function linkOrCopyDir(source, dest) {
+  if (existsSync(dest)) {
+    return;
+  }
+  try {
+    symlinkSync(source, dest, process.platform === "win32" ? "junction" : "dir");
+  } catch {
+    cpSync(source, dest, { recursive: true });
+  }
+}
 process.env.WORKSPACE_FOLDER_PATHS = repoRoot;
 
 function seedRepoExamples() {
@@ -731,10 +743,10 @@ test("runs when installed under a symlinked temp path", { timeout: 120_000 }, ()
   const installRoot = join(root, "cursor-curator");
   const objectiveDir = join(root, "sample-objective");
   try {
-    cpSync("cursor-curator/dist", join(installRoot, "dist"), { recursive: true });
-    cpSync("cursor-curator/assets", join(installRoot, "assets"), { recursive: true });
-    cpSync("cursor-curator/package.json", join(installRoot, "package.json"));
-    cpSync(join(repoRoot, "node_modules"), join(installRoot, "node_modules"), { recursive: true });
+    cpSync(join(packageRoot, "dist"), join(installRoot, "dist"), { recursive: true });
+    cpSync(join(packageRoot, "assets"), join(installRoot, "assets"), { recursive: true });
+    cpSync(join(packageRoot, "package.json"), join(installRoot, "package.json"));
+    linkOrCopyDir(join(repoRoot, "node_modules"), join(installRoot, "node_modules"));
     cpSync(join(examplesRoot, "sample-objective"), objectiveDir, { recursive: true });
     resetDatabaseCache();
     importObjectiveFixture(root, "board-examples/sample-objective", { dirPath: objectiveDir });
@@ -758,14 +770,14 @@ test("runs when installed under a symlinked temp path", { timeout: 120_000 }, ()
 });
 
 test("dist board CLI invokes main when executed directly", () => {
-  const boardCli = resolve("cursor-curator/dist/board/local-objective-board.mjs");
+  const boardCli = join(packageRoot, "dist/board/local-objective-board.mjs");
   const result = spawnSync(process.execPath, [
     boardCli,
     "--objective",
-    resolve("cursor-curator/surfaces/local-objective-board/examples/sample-objective"),
+    join(examplesRoot, "sample-objective"),
     "--once",
     "--json",
-  ], { encoding: "utf8", cwd: resolve(".") });
+  ], { encoding: "utf8", cwd: repoRoot });
 
   assert.equal(result.status, 0, result.stderr || result.stdout);
   const report = JSON.parse(result.stdout);

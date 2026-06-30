@@ -1,3 +1,5 @@
+import type { StateV3 } from "../schema/state-v3.js";
+
 export interface WorkerTaskVerify {
   id?: string;
   verify?: string[];
@@ -155,15 +157,7 @@ export function formatLastVerificationYaml(patch: LastVerificationPatch): string
 }
 
 export function readLastVerificationFromLoadedState(
-  state: {
-    checks?: {
-      last_verification?: {
-        result?: string | null;
-        task?: string | null;
-        commands?: Array<{ cmd?: string; status?: string }>;
-      };
-    };
-  } | null | undefined,
+  state: Pick<StateV3, "checks"> | null | undefined,
 ): {
   result: string | null;
   task: string | null;
@@ -172,10 +166,13 @@ export function readLastVerificationFromLoadedState(
   const lastVerification = state?.checks?.last_verification;
   if (!lastVerification || typeof lastVerification !== "object") return null;
   const commands = (lastVerification.commands || [])
-    .map((entry) => ({
-      cmd: String(entry.cmd || ""),
-      status: String(entry.status || ""),
-    }))
+    .map((entry: unknown) => {
+      const command = entry as ReceiptCommand;
+      return {
+        cmd: String(command.cmd || ""),
+        status: String(command.status || ""),
+      };
+    })
     .filter((entry) => entry.cmd);
   return {
     result: lastVerification.result ?? null,
