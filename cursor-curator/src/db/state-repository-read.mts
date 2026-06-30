@@ -7,6 +7,7 @@ import {
   assembleStateV3,
   intakeFromRow,
   rulesFromRow,
+  type ObjectiveRow,
   type SubobjectiveLinkRow,
   type TaskListItemRow,
   type TaskRow,
@@ -125,6 +126,38 @@ function loadRelatedRows(db: ReturnType<typeof getDb>, objectiveId: number) {
   };
 }
 
+function buildLoadedObjective(
+  workspaceRoot: string,
+  objective: ObjectiveRow,
+  state: StateV3,
+): LoadedObjective {
+  const root = resolve(workspaceRoot);
+  return {
+    workspaceRoot: root,
+    slug: objective.slug,
+    dirPath: objective.dir_path,
+    objectiveId: objective.id,
+    state,
+    boardPath: logicalBoardPath(objective.slug),
+  };
+}
+
+export function loadLoadedObjectiveInTransaction(
+  db: Database,
+  workspaceRoot: string,
+  objectiveId: number,
+): LoadedObjective {
+  const objective = db
+    .query<ObjectiveRow, [number]>("SELECT * FROM objectives WHERE id = ?")
+    .get(objectiveId);
+  if (!objective) {
+    throw new Error(`Objective not found in database: id ${objectiveId}`);
+  }
+  const related = loadRelatedRows(db, objectiveId);
+  const state = assembleStateV3({ objective, ...related });
+  return buildLoadedObjective(workspaceRoot, objective, state);
+}
+
 export function loadStateV3(workspaceRoot: string, slug: string): LoadedObjective {
   const root = resolve(workspaceRoot);
   const db = getDb(root);
@@ -133,16 +166,7 @@ export function loadStateV3(workspaceRoot: string, slug: string): LoadedObjectiv
   if (!objective) {
     throw new Error(`Objective not found in database: ${slug}`);
   }
-  const related = loadRelatedRows(db, objective.id);
-  const state = assembleStateV3({ objective, ...related });
-  return {
-    workspaceRoot: root,
-    slug,
-    dirPath: objective.dir_path,
-    objectiveId: objective.id,
-    state,
-    boardPath: logicalBoardPath(slug),
-  };
+  return loadLoadedObjectiveInTransaction(db, root, objective.id);
 }
 
 export function listObjectives(workspaceRoot: string): ListedObjective[] {

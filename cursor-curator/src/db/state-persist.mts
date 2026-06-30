@@ -12,7 +12,7 @@ import {
   insertObjectiveChecks,
   insertObjectiveIntake,
   insertObjectiveRules,
-  insertObjectiveSuccessCriteria,
+  replaceObjectiveSuccessCriteria,
   insertObjectiveVisualBoard,
   upsertObjectiveChecks,
 } from "./objective-satellite-writes.mjs";
@@ -33,7 +33,11 @@ export function insertObjectiveSatellites(db: Database, objectiveId: number, par
     insertObjectiveIntake(db, objectiveId, parts.intake);
   }
 
-  insertObjectiveSuccessCriteria(db, objectiveId, parts.successCriteria);
+  replaceObjectiveSuccessCriteria(
+    db,
+    objectiveId,
+    parts.successCriteria as StateV3["objective"]["success_criteria"],
+  );
 
   if (parts.rules) {
     insertObjectiveRules(db, objectiveId, parts.rules);

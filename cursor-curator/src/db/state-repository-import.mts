@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { StateV3Schema, type StateV3 } from "../schema/state-v3.js";
-import { ensureWorkspace, logicalBoardPath, withTransaction } from "./connection.mjs";
+import { ensureWorkspace, withTransaction } from "./connection.mjs";
 import { invalidateHubPayloadCache } from "../hub/objective-hub.mjs";
 import { getDb, objectiveRowBySlug } from "./state-repository-db.mjs";
 import { insertObjectiveGraph } from "./state-persist.mjs";
@@ -9,28 +9,11 @@ import { replaceSubobjectiveLinks } from "./state-subobjective-links.mjs";
 import {
   fixtureStateJsonPath,
   fixturesRoot,
+  loadLoadedObjectiveInTransaction,
   loadObjectiveTemplate,
   objectiveExistsInDb,
 } from "./state-repository-read.mjs";
 import type { LoadedObjective } from "./state-repository-types.mjs";
-
-function loadedObjectiveFromState(
-  workspaceRoot: string,
-  slug: string,
-  dirPath: string,
-  objectiveId: number,
-  state: StateV3,
-): LoadedObjective {
-  const root = resolve(workspaceRoot);
-  return {
-    workspaceRoot: root,
-    slug,
-    dirPath,
-    objectiveId,
-    state,
-    boardPath: logicalBoardPath(slug),
-  };
-}
 
 function importSubobjectives(
   workspaceRoot: string,
@@ -125,13 +108,7 @@ export function saveStateV3(
 
     replaceSubobjectiveLinks(db, workspaceId, root, objectiveId, parsed.data, dirPath);
 
-    return loadedObjectiveFromState(
-      root,
-      parsed.data.objective.slug,
-      dirPath,
-      objectiveId,
-      parsed.data,
-    );
+    return loadLoadedObjectiveInTransaction(db, root, objectiveId);
   });
   invalidateHubPayloadCache();
   return result;

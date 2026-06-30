@@ -116,10 +116,22 @@ export function insertObjectiveSuccessCriteria(
   );
 }
 
+export function replaceObjectiveSuccessCriteria(
+  db: Database,
+  objectiveId: number,
+  successCriteria: StateV3["objective"]["success_criteria"] | null,
+): void {
+  db.query("DELETE FROM objective_success_criteria WHERE objective_id = ?").run(objectiveId);
+  if (!successCriteria) {
+    return;
+  }
+  insertObjectiveSuccessCriteria(db, objectiveId, successCriteria);
+}
+
 export function insertObjectiveAgents(
   db: Database,
   objectiveId: number,
-  agents: Record<string, string>,
+  agents: StateV3["agents"],
 ): void {
   db.query(
     "INSERT INTO objective_agents (objective_id, scout, worker, approval_gate) VALUES (?, ?, ?, ?)",
@@ -129,7 +141,7 @@ export function insertObjectiveAgents(
 export function replaceObjectiveAgents(
   db: Database,
   objectiveId: number,
-  agents: Record<string, string> | null,
+  agents: StateV3["agents"] | null,
 ): void {
   db.query("DELETE FROM objective_agents WHERE objective_id = ?").run(objectiveId);
   if (!agents) {
@@ -208,7 +220,7 @@ export function upsertObjectiveChecks(
 
 export function clearObjectiveSatellites(db: Database, objectiveId: number): void {
   replaceObjectiveIntake(db, objectiveId, null);
-  db.query("DELETE FROM objective_success_criteria WHERE objective_id = ?").run(objectiveId);
+  replaceObjectiveSuccessCriteria(db, objectiveId, null);
   replaceObjectiveRules(db, objectiveId, null);
   replaceObjectiveAgents(db, objectiveId, null);
   replaceObjectiveVisualBoard(db, objectiveId, undefined);

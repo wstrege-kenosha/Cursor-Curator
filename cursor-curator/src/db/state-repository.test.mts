@@ -15,7 +15,7 @@ import {
   saveStateV3,
   applyReceipt,
 } from "./state-repository.mjs";
-import { findObjectiveSlugByDirPath } from "./state-repository-read.mjs";
+import { findObjectiveSlugByDirPath, loadStateV3 } from "./state-repository-read.mjs";
 import { loadState } from "../state/objective-state.mjs";
 import { removeWorkspaceDir } from "./test-helpers.mjs";
 
@@ -104,6 +104,15 @@ test("patchObjective dry run validates without persisting", () => {
   assert.equal(result.ok, true);
   const after = loadState("sample-cursor-smoke", repoRoot);
   assert.equal(after.state.objective.tranche, before.state.objective.tranche);
+});
+
+test("saveStateV3 returns canonical DB state matching loadStateV3", () => {
+  resetDatabaseCache();
+  importObjectiveFixture(repoRoot, "sample-cursor-smoke");
+  const before = loadState("sample-cursor-smoke", repoRoot);
+  const saved = saveStateV3(repoRoot, before.state, { dirPath: before.objectiveDir });
+  const reloaded = loadStateV3(repoRoot, "sample-cursor-smoke");
+  assert.deepEqual(saved.state, reloaded.state);
 });
 
 test("saveStateV3 preserves parent subobjective links when child objective is updated", () => {

@@ -5,6 +5,7 @@ import {
   replaceObjectiveAgents,
   replaceObjectiveIntake,
   replaceObjectiveRules,
+  replaceObjectiveSuccessCriteria,
   replaceObjectiveVisualBoard,
   upsertObjectiveChecks,
 } from "./objective-satellite-writes.mjs";
@@ -42,14 +43,7 @@ export function persistObjectivePatchInDb(
     );
 
     if (patch.objective.success_criteria) {
-      db.query(
-        "UPDATE objective_success_criteria SET signal = ?, cadence = ?, final_proof = ? WHERE objective_id = ?",
-      ).run(
-        state.objective.success_criteria.signal,
-        state.objective.success_criteria.cadence ?? null,
-        state.objective.success_criteria.final_proof,
-        objectiveId,
-      );
+      replaceObjectiveSuccessCriteria(db, objectiveId, state.objective.success_criteria);
     }
 
     if ("intake" in patch.objective) {
